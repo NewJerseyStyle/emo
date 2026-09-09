@@ -1,0 +1,6 @@
+node_modules/
+dist/
+test/runtime/bin/
+.omo/run-continuation/
+*.log
+.DS_Store
