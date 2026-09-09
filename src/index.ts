@@ -3,6 +3,10 @@ import type { ControllerEvent, ControllerState } from "./types";
 import { DEFAULT_CONFIG } from "./config";
 import { initialState, reduce } from "./state-machine";
 import { extractTaskContext, formatTaskSummary } from "./orchestrator/task-context";
+import { detectOmo } from "./orchestrator/omo";
+import { classifyWithLLM, extractUserText } from "./orchestrator/classify";
+import { routeUserInput } from "./orchestrator/route";
+import { detectFourF, sootheMessage } from "./ba/soothe";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 
 export { DEFAULT_CONFIG } from "./config";
@@ -19,6 +23,9 @@ const taskContextStore = new Map<string, string>();
 const server: PluginType = async (input) => {
   const { client } = input;
   console.log("[cache-compaction] plugin server loaded");
+  // BA orchestration + HL repo writes are active only when omo is installed.
+  const omoPresent = await detectOmo(client);
+  console.log(`[cache-compaction] omo present: ${omoPresent}`);
   const states = new Map<string, ControllerState>();
   let currentSessionId: string | null = null;
   // Re-entrancy guard: our own client.session.prompt calls create new
@@ -122,6 +129,34 @@ const server: PluginType = async (input) => {
         } catch (err) {
           console.warn(
             `[cache-compaction] context restore failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        } finally {
+          busy = false;
+        }
+      }
+
+      // BA orchestration: only when omo is installed.
+      if (omoPresent) {
+        busy = true;
+        try {
+          const classified = await classifyWithLLM(client, text);
+          if (classified) {
+            const decision = routeUserInput(classified);
+            console.log(
+              `[cache-compaction] BA decision: ${JSON.stringify(decision.actions.map((a) => a.action))}`,
+            );
+            const f = detectFourF(text);
+            if (f) {
+              console.log(
+                `[cache-compaction] BA soothe (${f}): ${sootheMessage(f)}`,
+              );
+            }
+          } else {
+            console.log("[cache-compaction] BA classification returned no result");
+          }
+        } catch (err) {
+          console.warn(
+            `[cache-compaction] BA classification error: ${err instanceof Error ? err.message : String(err)}`,
           );
         } finally {
           busy = false;
