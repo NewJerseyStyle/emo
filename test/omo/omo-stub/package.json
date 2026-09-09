@@ -1,0 +1,6 @@
+{
+  "name": "oh-my-openagent",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./index.js"
+}

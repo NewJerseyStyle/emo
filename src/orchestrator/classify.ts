@@ -112,7 +112,6 @@ export async function classifyWithLLM(
       body: {
         system: BA_SYSTEM_PROMPT,
         parts: [{ type: "text", text }],
-        noReply: true,
       },
       path: { id: sessionID },
     });

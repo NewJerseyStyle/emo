@@ -23,14 +23,24 @@ const taskContextStore = new Map<string, string>();
 const server: PluginType = async (input) => {
   const { client } = input;
   console.log("[cache-compaction] plugin server loaded");
-  // BA orchestration + HL repo writes are active only when omo is installed.
-  const omoPresent = await detectOmo(client);
-  console.log(`[cache-compaction] omo present: ${omoPresent}`);
   const states = new Map<string, ControllerState>();
   let currentSessionId: string | null = null;
   // Re-entrancy guard: our own client.session.prompt calls create new
   // messages that re-trigger chat.message. Skip while we are the initiator.
   let busy = false;
+  // Lazy omo detection: resolved on the first chat.message, never at plugin
+  // init (config.get during init deadlocks the server). Cached after first call.
+  let omoPresent: boolean | null = null;
+  const getOmoPresent = async (): Promise<boolean> => {
+    if (omoPresent === null) {
+      omoPresent = await Promise.race([
+        detectOmo(client),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
+      ]);
+      console.log(`[cache-compaction] omo present: ${omoPresent}`);
+    }
+    return omoPresent;
+  };
 
   const handle = (sessionId: string, event: ControllerEvent): void => {
     const state = states.get(sessionId) ?? initialState();
@@ -136,7 +146,7 @@ const server: PluginType = async (input) => {
       }
 
       // BA orchestration: only when omo is installed.
-      if (omoPresent) {
+      if (await getOmoPresent()) {
         busy = true;
         try {
           const classified = await classifyWithLLM(client, text);
