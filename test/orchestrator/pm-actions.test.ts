@@ -11,6 +11,7 @@ import {
   scheduleNextTask,
   updateBaMemory,
   writeDecision,
+  writeFeasibility,
 } from "../../src/orchestrator/pm-actions";
 import type { Task } from "../../src/pm/types";
 
@@ -140,5 +141,27 @@ describe("loadPriorClosures", () => {
     ensureRepo(makeConfig(root));
 
     expect(loadPriorClosures(makeConfig(root), "proj-1")).toBe("");
+  });
+});
+
+describe("writeFeasibility", () => {
+  it("writes a feasibility doc with status/date frontmatter", () => {
+    const root = makeTmpDir();
+    ensureRepo(makeConfig(root));
+
+    writeFeasibility(makeConfig(root), "proj-1", {
+      assessment: "needs-poc",
+      risks: ["external API rate limits"],
+      uncertainties: ["auth provider"],
+      recommendation: "Run a POC first",
+    });
+
+    const dir = path.join(root, "projects", "proj-1", "feasibility");
+    const files = fs.readdirSync(dir);
+    expect(files.length).toBe(1);
+    const content = fs.readFileSync(path.join(dir, files[0]), "utf8");
+    expect(content).toContain('status: "needs-poc"');
+    expect(content).toContain("Run a POC first");
+    expect(content).toContain("external API rate limits");
   });
 });

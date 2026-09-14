@@ -3,6 +3,7 @@ import path from "node:path";
 import { ensureRepo, writeDoc } from "../hl-repo";
 import { docPath, projectDir } from "../hl-repo/paths";
 import type { HlRepoConfig } from "../hl-repo/types";
+import type { FeasibilityReport } from "../pm/feasibility";
 import { slugify } from "./audit";
 
 /** Match a `- [ ] <id>: <title>` line in a project-plan doc. */
@@ -116,4 +117,40 @@ export function loadPriorClosures(
   return files
     .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
     .join("\n\n");
+}
+
+/** Write a PM feasibility assessment to the project's feasibility/ dir. */
+export function writeFeasibility(
+  config: HlRepoConfig,
+  projectId: string,
+  report: FeasibilityReport,
+): void {
+  ensureRepo(config);
+  const name = slugify(report.recommendation).slice(0, 40) || "feasibility";
+  const date = new Date().toISOString().slice(0, 10);
+  const bullet = (items: string[]): string =>
+    items.length === 0 ? "- none" : items.map((item) => `- ${item}`).join("\n");
+  const content = `---
+status: "${report.assessment}"
+date: "${date}"
+---
+# Feasibility
+
+## Assessment
+
+${report.assessment}
+
+## Risks
+
+${bullet(report.risks)}
+
+## Uncertainties
+
+${bullet(report.uncertainties)}
+
+## Recommendation
+
+${report.recommendation}
+`;
+  writeDoc(config, projectId, "feasibility", content, name);
 }
