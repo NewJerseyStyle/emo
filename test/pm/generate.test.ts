@@ -15,6 +15,30 @@ function mockClient(responseText: string): OpencodeClient {
   } as unknown as OpencodeClient;
 }
 
+function mockClientCapture(capture: { prompt: string }): OpencodeClient {
+  return {
+    session: {
+      create: async () => ({ data: { id: "sess-test" } }),
+      prompt: async (args: { body: { parts?: Array<{ type: string; text?: string }> } }): Promise<PromptResult> => {
+        const text = args.body.parts?.[0]?.text ?? "";
+        capture.prompt = text;
+        return {
+          data: {
+            parts: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  tasks: [{ id: "t1", title: "x", docTokens: 1, codeTokens: 2, complexity: "low", dependencies: [] }],
+                }),
+              },
+            ],
+          },
+        };
+      },
+    },
+  } as unknown as OpencodeClient;
+}
+
 describe("generateTasks", () => {
   it("parses a valid task list from the LLM", async () => {
     const client = mockClient(
@@ -78,5 +102,24 @@ describe("generateTasks", () => {
   it("returns null on malformed JSON", async () => {
     const client = mockClient("not json at all");
     expect(await generateTasks(client, "goal")).toBeNull();
+  });
+
+  it("prepends prior context to the prompt when provided", async () => {
+    const capture: { prompt: string } = { prompt: "" };
+    const client = mockClientCapture(capture);
+
+    await generateTasks(client, "build a dashboard", "# Closure A");
+
+    expect(capture.prompt).toContain("# Closure A");
+    expect(capture.prompt).toContain("build a dashboard");
+  });
+
+  it("omits context prefix when context is empty", async () => {
+    const capture: { prompt: string } = { prompt: "" };
+    const client = mockClientCapture(capture);
+
+    await generateTasks(client, "build a dashboard", "");
+
+    expect(capture.prompt).toBe("build a dashboard");
   });
 });

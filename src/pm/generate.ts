@@ -94,12 +94,14 @@ function parseTasks(value: unknown): Task[] | null {
 
 /**
  * Decompose a goal into concrete tasks using a dedicated subagent session.
- * Returns null on any failure (no API, parse error, invalid output) so the
- * caller can fall back gracefully.
+ * Optional `context` (e.g. prior closures / lessons) is prepended so the PM
+ * can carry earlier decisions into new planning. Returns null on any failure
+ * (no API, parse error, invalid output) so the caller can fall back gracefully.
  */
 export async function generateTasks(
   client: OpencodeClient,
   goalSummary: string,
+  context?: string,
 ): Promise<Task[] | null> {
   try {
     const created = await client.session.create({
@@ -108,10 +110,14 @@ export async function generateTasks(
     const sessionID = created.data?.id;
     if (!sessionID) return null;
 
+    const prompt =
+      context === undefined || context === ""
+        ? goalSummary
+        : `Prior context (lessons/decisions from earlier phases):\n\n${context}\n\nGoal: ${goalSummary}`;
     const res = await client.session.prompt({
       body: {
         system: GENERATE_TASKS_SYSTEM_PROMPT,
-        parts: [{ type: "text", text: goalSummary }],
+        parts: [{ type: "text", text: prompt }],
       },
       path: { id: sessionID },
     });
