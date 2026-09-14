@@ -10,6 +10,7 @@ import { routeUserInput } from "./orchestrator/route";
 import { detectFourF, sootheMessage } from "./ba/soothe";
 import { isUlwSession } from "./ulw-detector";
 import { generateTasks } from "./pm/generate";
+import { generateFeasibility } from "./pm/feasibility";
 import { buildPlan } from "./pm/plan";
 import {
   slugify,
@@ -23,6 +24,7 @@ import {
   scheduleNextTask,
   updateBaMemory,
   writeDecision,
+  writeFeasibility,
 } from "./orchestrator/pm-actions";
 import type { HlRepoConfig } from "./hl-repo/types";
 import type { OpencodeClient } from "@opencode-ai/sdk";
@@ -107,6 +109,23 @@ const server: PluginType = async (input, options) => {
     }
   };
 
+  /** Inject a noReply system message so the main agent absorbs context. */
+  const injectContext = async (sessionId: string, text: string): Promise<void> => {
+    busy = true;
+    try {
+      await client.session.prompt({
+        body: { system: text, parts: [], noReply: true },
+        path: { id: sessionId },
+      });
+    } catch (err) {
+      console.warn(
+        `[cache-compaction] context inject failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      busy = false;
+    }
+  };
+
   /** Build a ULW signal from the session's recent messages. */
   const getUlwSignal = async (sessionId: string): Promise<UlwSignal> => {
     try {
@@ -141,6 +160,14 @@ const server: PluginType = async (input, options) => {
       console.log(
         `[cache-compaction] PM: project "${projectId}" planned (${tasks.length} tasks, ${totalTokens} tokens)`,
       );
+      // PM feasibility study: flag risks/uncertainties before execution.
+      const feasibility = await generateFeasibility(client, goalSummary, tasks);
+      if (feasibility !== null) {
+        writeFeasibility(hlConfig, projectId, feasibility);
+        console.log(
+          `[cache-compaction] PM: feasibility "${feasibility.assessment}" for "${projectId}"`,
+        );
+      }
     } catch (err) {
       console.warn(
         `[cache-compaction] PM: plan write failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -456,6 +483,14 @@ const server: PluginType = async (input, options) => {
                 default:
                   break;
               }
+            }
+            // Tell the main agent what the PM layer understood/did so it can
+            // relay the situation to the user (noReply: no competing response).
+            const tldr = decision.actions
+              .map((a) => `${a.atom.type} (${a.action}): ${a.atom.summary}`)
+              .join("; ");
+            if (tldr) {
+              await injectContext(sessionID, `[PM layer] ${tldr}`);
             }
             const f = detectFourF(text);
             if (f) {
