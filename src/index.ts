@@ -18,6 +18,12 @@ import {
   writeClosureFromSession,
   type ProjectContext,
 } from "./orchestrator/audit";
+import {
+  loadPriorClosures,
+  scheduleNextTask,
+  updateBaMemory,
+  writeDecision,
+} from "./orchestrator/pm-actions";
 import type { HlRepoConfig } from "./hl-repo/types";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 
@@ -122,13 +128,15 @@ const server: PluginType = async (input, options) => {
    */
   const handleNewGoal = async (sessionId: string, goalSummary: string): Promise<void> => {
     const projectId = slugify(goalSummary);
-    const tasks = await generateTasks(client, goalSummary);
+    const priorClosures = loadPriorClosures(hlConfig, projectId);
+    const tasks = await generateTasks(client, goalSummary, priorClosures || undefined);
     if (!tasks) {
       console.warn("[cache-compaction] PM: no tasks generated, skipping plan");
       return;
     }
     try {
       const totalTokens = writeProjectPlan(hlConfig, projectId, goalSummary, tasks);
+      writeDecision(hlConfig, projectId, `Initiate project "${projectId}": ${goalSummary}`);
       activeProjects.set(sessionId, { projectId, goal: goalSummary, totalTokens, closed: false });
       console.log(
         `[cache-compaction] PM: project "${projectId}" planned (${tasks.length} tasks, ${totalTokens} tokens)`,
@@ -153,6 +161,93 @@ const server: PluginType = async (input, options) => {
     } catch (err) {
       console.warn(
         `[cache-compaction] PM: change request write failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  /** Draft a change-request from user feedback (BA reflection). */
+  const handleFeedback = (sessionId: string, summary: string): void => {
+    const project = activeProjects.get(sessionId);
+    if (!project) return;
+    try {
+      writeChangeRequest(hlConfig, project.projectId, `[feedback] ${summary}`);
+      updateBaMemory(hlConfig, project.projectId, `Feedback: ${summary}`);
+      console.log(`[cache-compaction] PM: feedback logged for "${project.projectId}"`);
+    } catch (err) {
+      console.warn(
+        `[cache-compaction] PM: feedback write failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  /** Draft a change-request for a bug/debug report. */
+  const handleBugDebug = (sessionId: string, summary: string): void => {
+    const project = activeProjects.get(sessionId);
+    if (!project) return;
+    try {
+      writeChangeRequest(hlConfig, project.projectId, `[bug] ${summary}`);
+      console.log(`[cache-compaction] PM: bug report logged for "${project.projectId}"`);
+    } catch (err) {
+      console.warn(
+        `[cache-compaction] PM: bug report write failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  /** Draft a change-request for a scope cancellation/reduction. */
+  const handleCancelScope = (sessionId: string, summary: string): void => {
+    const project = activeProjects.get(sessionId);
+    if (!project) return;
+    try {
+      writeChangeRequest(hlConfig, project.projectId, `[scope-cancel] ${summary}`);
+      console.log(`[cache-compaction] PM: scope change logged for "${project.projectId}"`);
+    } catch (err) {
+      console.warn(
+        `[cache-compaction] PM: scope change write failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  /** Record process feedback in the BA living document. */
+  const handleProcessFeedback = (sessionId: string, summary: string): void => {
+    const project = activeProjects.get(sessionId);
+    if (!project) return;
+    try {
+      updateBaMemory(hlConfig, project.projectId, `Process feedback: ${summary}`);
+      console.log(`[cache-compaction] PM: process feedback recorded for "${project.projectId}"`);
+    } catch (err) {
+      console.warn(
+        `[cache-compaction] PM: process feedback write failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  /** Schedule the next task from the plan (NEXT_STEP fast path). */
+  const handleNextStep = (sessionId: string): void => {
+    const project = activeProjects.get(sessionId);
+    if (!project) return;
+    try {
+      const taskId = scheduleNextTask(hlConfig, project.projectId);
+      if (taskId !== null) {
+        console.log(`[cache-compaction] PM: scheduled next task "${taskId}" for "${project.projectId}"`);
+      }
+    } catch (err) {
+      console.warn(
+        `[cache-compaction] PM: next-task scheduling failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  /** Record context dump / preference into the BA living document. */
+  const handleMemory = (sessionId: string, summary: string): void => {
+    const project = activeProjects.get(sessionId);
+    if (!project) return;
+    try {
+      updateBaMemory(hlConfig, project.projectId, summary);
+      console.log(`[cache-compaction] PM: context recorded for "${project.projectId}"`);
+    } catch (err) {
+      console.warn(
+        `[cache-compaction] PM: memory write failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   };
@@ -328,12 +423,38 @@ const server: PluginType = async (input, options) => {
             console.log(
               `[cache-compaction] BA decision: ${JSON.stringify(decision.actions.map((a) => a.action))}`,
             );
-            // PM documentation: plan new goals, log change requests.
+            // PM documentation: plan new goals, log change requests, record
+            // feedback/bugs/scope changes, schedule next tasks, maintain memory.
             for (const action of decision.actions) {
-              if (action.action === "plan" && action.atom.type === "NEW_GOAL") {
-                await handleNewGoal(sessionID, action.atom.summary);
-              } else if (action.action === "plan" && action.atom.type === "CHANGE_REQUEST") {
-                handleChangeRequest(sessionID, action.atom.summary);
+              const atom = action.atom;
+              switch (atom.type) {
+                case "NEW_GOAL":
+                  if (action.action === "plan") await handleNewGoal(sessionID, atom.summary);
+                  break;
+                case "CHANGE_REQUEST":
+                  if (action.action === "plan") handleChangeRequest(sessionID, atom.summary);
+                  break;
+                case "FEEDBACK":
+                  if (action.action === "plan") handleFeedback(sessionID, atom.summary);
+                  break;
+                case "BUG_DEBUG":
+                  if (action.action === "plan") handleBugDebug(sessionID, atom.summary);
+                  break;
+                case "CANCEL_SCOPE":
+                  if (action.action === "plan") handleCancelScope(sessionID, atom.summary);
+                  break;
+                case "PROCESS_FEEDBACK":
+                  if (action.action === "plan") handleProcessFeedback(sessionID, atom.summary);
+                  break;
+                case "NEXT_STEP":
+                  if (action.action === "execute") handleNextStep(sessionID);
+                  break;
+                case "CONTEXT_DUMP":
+                case "PREFERENCE":
+                  if (action.action === "answer") handleMemory(sessionID, atom.summary);
+                  break;
+                default:
+                  break;
               }
             }
             const f = detectFourF(text);
