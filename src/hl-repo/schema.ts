@@ -88,6 +88,10 @@ export function validateFrontmatter(
       requireString(fm, "status", errors);
       requireString(fm, "date", errors);
       break;
+    case "feasibility":
+      requireString(fm, "status", errors);
+      requireString(fm, "date", errors);
+      break;
     case "change-request":
       requireString(fm, "status", errors);
       requireString(fm, "date", errors);

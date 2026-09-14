@@ -6,6 +6,7 @@ export type DocType =
   | "change-request"
   | "closure"
   | "todo"
+  | "feasibility"
   | "index"
   | "skill";
 

@@ -39,5 +39,7 @@ export function docPath(
       return path.join(projectDir(root, projectId), "closures", `${name}.md`);
     case "todo":
       return path.join(projectDir(root, projectId), "todos", `${name}.md`);
+    case "feasibility":
+      return path.join(projectDir(root, projectId), "feasibility", `${name}.md`);
   }
 }
