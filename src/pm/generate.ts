@@ -1,4 +1,5 @@
 import type { OpencodeClient, Part } from "@opencode-ai/sdk";
+import { isSafePathSegment } from "../hl-repo/paths";
 import type { ComplexityLevel, Task } from "./types";
 
 /** The three valid complexity levels, used to validate LLM output. */
@@ -61,7 +62,7 @@ function parseTasks(value: unknown): Task[] | null {
   for (const raw of obj.tasks) {
     if (typeof raw !== "object" || raw === null) return null;
     const t = raw as Record<string, unknown>;
-    if (typeof t.id !== "string" || t.id === "") return null;
+    if (typeof t.id !== "string" || !isSafePathSegment(t.id)) return null;
     if (ids.has(t.id)) return null; // duplicate id
     ids.add(t.id);
     if (typeof t.title !== "string" || t.title === "") return null;
@@ -71,7 +72,9 @@ function parseTasks(value: unknown): Task[] | null {
       return null;
     }
     if (!Array.isArray(t.dependencies)) return null;
-    if (!t.dependencies.every((d) => typeof d === "string")) return null;
+    if (!t.dependencies.every((d) => typeof d === "string" && isSafePathSegment(d))) {
+      return null;
+    }
     tasks.push({
       id: t.id,
       title: t.title,

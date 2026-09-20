@@ -1,0 +1,10 @@
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - emo-hl-test:/root/.hl
+
+volumes:
+  emo-hl-test:

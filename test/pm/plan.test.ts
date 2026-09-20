@@ -43,6 +43,11 @@ describe("validatePlan", () => {
     const tasks = [planned(task("a")), planned(task("b", ["a"]))];
     expect(validatePlan(tasks)).toEqual([]);
   });
+
+  it("rejects task ids that cannot be used as safe filenames", () => {
+    const errors = validatePlan([planned(task("../../outside"))]);
+    expect(errors.some((e) => e.message.includes("invalid task id"))).toBe(true);
+  });
 });
 
 describe("topologicalSort", () => {

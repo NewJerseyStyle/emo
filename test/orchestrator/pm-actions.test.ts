@@ -113,6 +113,28 @@ describe("scheduleNextTask", () => {
     expect(content).toContain('status: "in-progress"');
   });
 
+  it("retains the active task and advances only after completion", () => {
+    const root = makeTmpDir();
+    const config = makeConfig(root);
+    writeProjectPlan(config, "proj-1", "goal", sampleTasks());
+
+    expect(scheduleNextTask(config, "proj-1")).toBe("t1");
+    expect(scheduleNextTask(config, "proj-1")).toBe("t1");
+    fs.writeFileSync(
+      docPath(root, "proj-1", "todo", "t1"),
+      '---\nstatus: "completed"\n---\n# Task: t1\n',
+    );
+
+    expect(scheduleNextTask(config, "proj-1")).toBe("t2");
+    expect(scheduleNextTask(config, "proj-1")).toBe("t2");
+    fs.writeFileSync(
+      docPath(root, "proj-1", "todo", "t2"),
+      '---\nstatus: "completed"\n---\n# Task: t2\n',
+    );
+
+    expect(scheduleNextTask(config, "proj-1")).toBeNull();
+  });
+
   it("returns null when there is no plan", () => {
     const root = makeTmpDir();
     ensureRepo(makeConfig(root));

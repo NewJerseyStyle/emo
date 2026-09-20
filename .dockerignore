@@ -1,0 +1,5 @@
+.git
+.omx
+dist
+node_modules
+*.log

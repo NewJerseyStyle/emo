@@ -1,8 +1,9 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 
 function run(root: string, args: string[], label: string): string {
   try {
-    return execSync(`git ${args.join(" ")}`, {
+    return execFileSync("git", args, {
       cwd: root,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -16,11 +17,12 @@ function run(root: string, args: string[], label: string): string {
 /** True when `root` is inside a git work tree. */
 export function isGitRepo(root: string): boolean {
   try {
-    execSync("git rev-parse --is-inside-work-tree", {
+    const topLevel = execFileSync("git", ["rev-parse", "--show-toplevel"], {
       cwd: root,
+      encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
-    return true;
+    return path.resolve(topLevel.trim()) === path.resolve(root);
   } catch {
     return false;
   }
@@ -40,8 +42,8 @@ export function gitHasChanges(root: string): boolean {
 /** Stage all changes and commit with `message`. No-op when nothing changed. */
 export function gitCommit(root: string, message: string): void {
   if (!gitHasChanges(root)) return;
-  run(root, ["add", "-A"], "add");
-  run(root, ["commit", "-m", JSON.stringify(message)], "commit");
+  run(root, ["add", "--all", "--", "."], "add");
+  run(root, ["commit", "-m", message], "commit");
 }
 
 /** Push the current branch to its upstream remote. */

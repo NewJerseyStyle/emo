@@ -1,0 +1,16 @@
+FROM oven/bun:1.4.1
+
+RUN apt-get update -qq \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends git ca-certificates nodejs \
+    && git config --global user.name "emo Docker Test" \
+    && git config --global user.email "emo-docker@example.invalid" \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json bun.lock postinstall.mjs ./
+RUN bun install --ignore-scripts --frozen-lockfile
+
+COPY . .
+
+CMD ["sh", "-lc", "bun test && bun run typecheck && bun run build && node postinstall.mjs"]

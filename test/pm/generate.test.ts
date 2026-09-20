@@ -99,6 +99,25 @@ describe("generateTasks", () => {
     expect(await generateTasks(client, "goal")).toBeNull();
   });
 
+  it("rejects model-generated task ids that are unsafe as filenames", async () => {
+    const client = mockClient(
+      JSON.stringify({
+        tasks: [
+          {
+            id: "../../outside",
+            title: "escape",
+            docTokens: 1,
+            codeTokens: 2,
+            complexity: "low",
+            dependencies: [],
+          },
+        ],
+      }),
+    );
+
+    expect(await generateTasks(client, "goal")).toBeNull();
+  });
+
   it("returns null on malformed JSON", async () => {
     const client = mockClient("not json at all");
     expect(await generateTasks(client, "goal")).toBeNull();

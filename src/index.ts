@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 import type { Plugin as PluginType } from "@opencode-ai/plugin";
 import type { ControllerEvent, ControllerState, UlwSignal } from "./types";
@@ -72,7 +73,7 @@ const server: PluginType = async (input, options) => {
 
   // HL repo config, read from plugin options (opencode.json plugin entry).
   const hlConfig: HlRepoConfig = {
-    root: (options?.hlRepoRoot as string | undefined) ?? path.join(input.directory, ".hl"),
+    root: (options?.hlRepoRoot as string | undefined) ?? path.join(os.homedir(), ".hl"),
     autoPush: options?.hlAutoPush === true,
     ...(options?.hlRemote !== undefined ? { remote: options.hlRemote as string } : {}),
   };
@@ -417,7 +418,6 @@ const server: PluginType = async (input, options) => {
       // If so, inject it as system context before any further processing.
       const storedContext = taskContextStore.get(sessionID);
       if (storedContext) {
-        taskContextStore.delete(sessionID);
         console.log("[cache-compaction] restoring task context for session");
         // Send the context as a system message to the session, noReply=true
         // so the model absorbs it without generating a visible response.
@@ -431,6 +431,7 @@ const server: PluginType = async (input, options) => {
             },
             path: { id: sessionID },
           });
+          taskContextStore.delete(sessionID);
         } catch (err) {
           console.warn(
             `[cache-compaction] context restore failed: ${err instanceof Error ? err.message : String(err)}`,

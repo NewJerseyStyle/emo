@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureRepo, writeDoc } from "../hl-repo";
+import { ensureRepo, readDoc, writeDoc } from "../hl-repo";
 import { docPath, projectDir } from "../hl-repo/paths";
 import type { HlRepoConfig } from "../hl-repo/types";
 import type { FeasibilityReport } from "../pm/feasibility";
@@ -84,6 +84,14 @@ export function scheduleNextTask(
     const match = TASK_LINE_RE.exec(line);
     if (match === null || match[1] === undefined) continue;
     const taskId = match[1];
+    const existing = readDoc(config, projectId, "todo", taskId);
+    if (existing !== null) {
+      const status = existing.frontmatter.status;
+      if (status === "completed" || status === "cancelled") {
+        continue;
+      }
+      return taskId;
+    }
     const date = new Date().toISOString().slice(0, 10);
     const content = `---
 status: "in-progress"

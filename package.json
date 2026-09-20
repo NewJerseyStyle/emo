@@ -28,6 +28,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "prepublishOnly": "bun run typecheck && bun test && bun run build",
+    "test:docker": "docker compose run --rm --build test",
     "postinstall": "node postinstall.mjs"
   },
   "dependencies": {

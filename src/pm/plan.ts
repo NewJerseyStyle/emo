@@ -1,4 +1,5 @@
 import { estimateTasks } from "./estimate";
+import { isSafePathSegment } from "../hl-repo/paths";
 import type { Plan, PlanError, PlannedTask, Task } from "./types";
 
 /**
@@ -12,6 +13,9 @@ export function validatePlan(tasks: PlannedTask[]): PlanError[] {
   const seen = new Set<string>();
 
   for (const t of tasks) {
+    if (!isSafePathSegment(t.id)) {
+      errors.push({ taskId: t.id, message: `invalid task id: ${t.id}` });
+    }
     if (seen.has(t.id)) {
       errors.push({ taskId: t.id, message: `duplicate task id: ${t.id}` });
     }

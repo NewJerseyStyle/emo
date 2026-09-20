@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ensureRepo, readDoc, writeDoc } from "../src/hl-repo";
+import { ensureRepo, gitCommit, readDoc, writeDoc } from "../src/hl-repo";
 import { docPath, projectDir } from "../src/hl-repo/paths";
 import { parseFrontmatter, validateFrontmatter } from "../src/hl-repo/schema";
 import type { HlRepoConfig } from "../src/hl-repo/types";
@@ -49,6 +49,26 @@ describe("ensureRepo", () => {
     const root = makeTmpDir();
     ensureRepo(makeConfig(root));
     expect(() => ensureRepo(makeConfig(root))).not.toThrow();
+  });
+
+  it("initializes an isolated repo when the HL root is nested in another worktree", () => {
+    const parent = makeTmpDir();
+    execSync("git init", { cwd: parent });
+    fs.writeFileSync(path.join(parent, "app.txt"), "original\n");
+    execSync("git add app.txt && git commit -m initial", { cwd: parent });
+    const parentHead = execSync("git rev-parse HEAD", { cwd: parent, encoding: "utf8" }).trim();
+
+    const root = path.join(parent, ".hl");
+    ensureRepo(makeConfig(root));
+
+    const hlTopLevel = execSync("git rev-parse --show-toplevel", {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+    expect(path.resolve(hlTopLevel)).toBe(path.resolve(root));
+    expect(execSync("git rev-parse HEAD", { cwd: parent, encoding: "utf8" }).trim()).toBe(
+      parentHead,
+    );
   });
 });
 
@@ -148,6 +168,27 @@ describe("docPath", () => {
 
   it("S5: projectDir resolves under projects/", () => {
     expect(projectDir("/root", "p1")).toBe(path.join("/root", "projects", "p1"));
+  });
+
+  it("rejects traversal and shell-like path segments", () => {
+    expect(() => projectDir("/root", "../../outside")).toThrow(/projectId/);
+    expect(() => docPath("/root", "p1", "todo", "../outside")).toThrow(/todo name/);
+    expect(() => docPath("/root", "p1", "todo", "$(touch-pwned)")).toThrow(/todo name/);
+  });
+});
+
+describe("gitCommit", () => {
+  it("passes commit messages as argv without shell expansion", () => {
+    const root = makeTmpDir();
+    ensureRepo(makeConfig(root));
+    const marker = path.join(root, "shell-expanded");
+    fs.writeFileSync(path.join(root, "safe.txt"), "safe\n");
+
+    gitCommit(root, `test $(touch ${marker})`);
+
+    expect(fs.existsSync(marker)).toBe(false);
+    const subject = execSync("git log -1 --pretty=%s", { cwd: root, encoding: "utf8" }).trim();
+    expect(subject).toBe(`test $(touch ${marker})`);
   });
 });
 

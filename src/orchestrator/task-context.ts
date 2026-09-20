@@ -124,9 +124,13 @@ export async function extractTaskContext(
     return null;
   }
 
-  if (messages.length === 0) return null;
+  const normalizedLimit = Number.isFinite(messageLimit)
+    ? Math.max(0, Math.floor(messageLimit))
+    : 30;
+  const recentMessages = normalizedLimit === 0 ? [] : messages.slice(-normalizedLimit);
+  if (recentMessages.length === 0) return null;
 
-  const prompt = buildExtractionPrompt(messages);
+  const prompt = buildExtractionPrompt(recentMessages);
 
   try {
     const created = await client.session.create({
