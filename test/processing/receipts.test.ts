@@ -152,6 +152,31 @@ describe("effect receipts", () => {
     }, async () => undefined)).rejects.toThrow();
     expect(fs.readdirSync(omo)).toEqual([]);
   });
+
+  it("anchors receipt writes when a validated directory path is swapped", async () => {
+    const projectRoot = temporaryRoot();
+    const omo = path.join(projectRoot, ".omo");
+    const receiptRoot = path.join(projectRoot, "state");
+    const snapshot = makeSnapshot();
+    const key = deriveEffectKey(snapshot, "memory", "memory/v1");
+    const receiptDirectory = path.join(receiptRoot, "receipts", "memory", key.slice(0, 2));
+    const safeBackup = `${receiptDirectory}.safe`;
+    fs.mkdirSync(omo);
+
+    await expect(executeEffectWithReceipt({
+      projectRoot,
+      receiptRoot,
+      snapshot,
+      effect: "memory",
+      adapterID: "memory/v1",
+      beforeReceiptWrite: () => {
+        fs.renameSync(receiptDirectory, safeBackup);
+        fs.symlinkSync(omo, receiptDirectory);
+      },
+    }, async () => undefined)).rejects.toThrow();
+
+    expect(fs.readdirSync(omo)).toEqual([]);
+  });
   it("rejects protected receipt roots without mutating .omo", async () => {
     const projectRoot = temporaryRoot();
     const omo = path.join(projectRoot, ".omo");

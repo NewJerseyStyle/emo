@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CompletedWorkSnapshot } from "../bridge-types";
 import { assertWritableRootOutsideOmo } from "../bridge-config";
-import { ensureSafeWriteDirectory } from "../safe-write";
+import { openSafeWriteDirectory } from "../safe-write";
 import { canonicalJson, sha256Text } from "../snapshot";
 
 export type EffectKind = "memory" | "closure";
@@ -28,6 +28,7 @@ export interface ReceiptExecutionOptions {
   lockLeaseMs?: number;
   /** Fault injection boundary used by focused durability tests. */
   afterEffectBeforeReceipt?(): void;
+  beforeReceiptWrite?(): void;
 }
 
 interface LockRecord {
@@ -380,34 +381,64 @@ export async function executeEffectWithReceipt(
   const leaseMs = options.lockLeaseMs ?? 30_000;
 
   return serialize(serialKey, async () => {
-    ensureSafeWriteDirectory(options.projectRoot, root, locations.receiptDirectory);
-    ensureSafeWriteDirectory(options.projectRoot, root, locations.lockDirectory);
-    if (hasReceipt(locations.receiptPath, expected)) return "already-written";
-    const lock = await acquireLock(
-      locations.lockPath,
-      locations.recoveryPath,
-      effectKey,
-      Math.max(0, timeoutMs),
-      Math.max(30, leaseMs),
+    const receiptDirectory = openSafeWriteDirectory(
+      options.projectRoot,
+      root,
+      locations.receiptDirectory,
     );
-    if (lock === undefined) return "deferred";
-    const stopRenewal = startLeaseRenewal(locations.lockPath, lock, Math.max(30, leaseMs));
+    let lockDirectory: ReturnType<typeof openSafeWriteDirectory>;
     try {
-      if (hasReceipt(locations.receiptPath, expected)) return "already-written";
-      await effect(effectKey);
-      options.afterEffectBeforeReceipt?.();
-      ensureSafeWriteDirectory(options.projectRoot, root, locations.receiptDirectory);
-      ensureSafeWriteDirectory(options.projectRoot, root, locations.lockDirectory);
-      writeNoReplace(locations.receiptPath, `${canonicalJson(expected)}\n`);
-      return "written";
-    } finally {
-      stopRenewal();
-      releaseLock(
-        locations.lockPath,
-        locations.recoveryPath,
-        lock,
+      lockDirectory = openSafeWriteDirectory(
+        options.projectRoot,
+        root,
+        locations.lockDirectory,
+      );
+    } catch (error) {
+      receiptDirectory.close();
+      throw error;
+    }
+    const anchored = {
+      receiptPath: path.join(receiptDirectory.anchorPath, path.basename(locations.receiptPath)),
+      lockPath: path.join(lockDirectory.anchorPath, path.basename(locations.lockPath)),
+      recoveryPath: path.join(lockDirectory.anchorPath, path.basename(locations.recoveryPath)),
+    };
+
+    try {
+      receiptDirectory.assertCurrent();
+      lockDirectory.assertCurrent();
+      if (hasReceipt(anchored.receiptPath, expected)) return "already-written";
+      const lock = await acquireLock(
+        anchored.lockPath,
+        anchored.recoveryPath,
+        effectKey,
+        Math.max(0, timeoutMs),
         Math.max(30, leaseMs),
       );
+      if (lock === undefined) return "deferred";
+      const stopRenewal = startLeaseRenewal(anchored.lockPath, lock, Math.max(30, leaseMs));
+      try {
+        if (hasReceipt(anchored.receiptPath, expected)) return "already-written";
+        await effect(effectKey);
+        options.afterEffectBeforeReceipt?.();
+        receiptDirectory.assertCurrent();
+        lockDirectory.assertCurrent();
+        options.beforeReceiptWrite?.();
+        writeNoReplace(anchored.receiptPath, `${canonicalJson(expected)}\n`);
+        receiptDirectory.assertCurrent();
+        lockDirectory.assertCurrent();
+        return "written";
+      } finally {
+        stopRenewal();
+        releaseLock(
+          anchored.lockPath,
+          anchored.recoveryPath,
+          lock,
+          Math.max(30, leaseMs),
+        );
+      }
+    } finally {
+      lockDirectory.close();
+      receiptDirectory.close();
     }
   });
 }

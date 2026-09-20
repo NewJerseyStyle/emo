@@ -91,6 +91,36 @@ describe("deterministic closure export", () => {
     expect(fs.readdirSync(protectedRoot)).toEqual([]);
   });
 
+
+  it("anchors temp creation when the validated directory path is swapped", async () => {
+    const projectRoot = temporaryRoot();
+    const protectedRoot = path.join(projectRoot, ".omo");
+    const root = path.join(projectRoot, "closures");
+    const snapshot = makeSnapshot();
+    fs.mkdirSync(protectedRoot);
+    const directory = path.join(
+      root,
+      sha256Text(snapshot.projectID),
+      `${sha256Text(snapshot.workID)}-${sha256Text(snapshot.workStartedAt)}`,
+    );
+    const safeBackup = `${directory}.safe`;
+    const exporter = createClosureExporter({
+      root,
+      projectRoot,
+      publicationHooks: {
+        beforeTempOpen: () => {
+          fs.renameSync(directory, safeBackup);
+          fs.symlinkSync(protectedRoot, directory);
+        },
+      },
+    });
+
+    await expect(
+      exporter.export(snapshot, { idempotencyKey: "key", projectRoot }),
+    ).rejects.toThrow();
+    expect(fs.readdirSync(protectedRoot)).toEqual([]);
+    expect(fs.readdirSync(safeBackup)).toEqual([]);
+  });
   it("rejects protected direct, nested, and symlink-aliased roots before creation", () => {
     const projectRoot = temporaryRoot();
     const protectedRoot = path.join(projectRoot, ".omo");

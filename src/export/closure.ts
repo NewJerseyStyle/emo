@@ -4,9 +4,10 @@ import path from "node:path";
 import type { ClosureExporter, CompletedWorkSnapshot } from "../bridge-types";
 import { assertWritableRootOutsideOmo } from "../bridge-config";
 import { sha256Text } from "../snapshot";
-import { ensureSafeWriteDirectory } from "../safe-write";
+import { openSafeWriteDirectory } from "../safe-write";
 
 export interface ClosurePublicationHooks {
+  beforeTempOpen?(): void;
   beforeLink?(): void;
   afterLink?(): void;
 }
@@ -163,29 +164,33 @@ function publishNoReplace(
   writableRoot: string,
 ): void {
   const directory = path.dirname(finalPath);
-  ensureSafeWriteDirectory(projectRoot, writableRoot, directory);
+  const directoryHandle = openSafeWriteDirectory(projectRoot, writableRoot, directory);
+  const finalName = path.basename(finalPath);
+  const anchoredFinalPath = path.join(directoryHandle.anchorPath, finalName);
   const tempPath = path.join(
-    directory,
-    `.${path.basename(finalPath)}.${process.pid}.${randomUUID()}.tmp`,
+    directoryHandle.anchorPath,
+    `.${finalName}.${process.pid}.${randomUUID()}.tmp`,
   );
   let fd: number | undefined;
   try {
+    hooks?.beforeTempOpen?.();
     fd = fs.openSync(tempPath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, 0o600);
     fs.writeFileSync(fd, bytes);
     fs.fsyncSync(fd);
     fs.closeSync(fd);
     fd = undefined;
     hooks?.beforeLink?.();
-    ensureSafeWriteDirectory(projectRoot, writableRoot, directory);
+    directoryHandle.assertCurrent();
     try {
-      fs.linkSync(tempPath, finalPath);
+      fs.linkSync(tempPath, anchoredFinalPath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      compareExisting(finalPath, bytes, digest);
+      compareExisting(anchoredFinalPath, bytes, digest);
       return;
     }
     hooks?.afterLink?.();
-    const directoryFd = fs.openSync(directory, fs.constants.O_RDONLY);
+    directoryHandle.assertCurrent();
+    const directoryFd = fs.openSync(directoryHandle.anchorPath, fs.constants.O_RDONLY);
     try {
       fs.fsyncSync(directoryFd);
     } finally {
@@ -198,6 +203,7 @@ function publishNoReplace(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+    directoryHandle.close();
   }
 }
 
