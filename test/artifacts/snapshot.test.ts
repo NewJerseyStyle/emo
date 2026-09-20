@@ -241,6 +241,17 @@ describe("discoverCompletedWork", () => {
       value: { markdown: completePlan("Worktree") },
       source: { relativePath: ".omo/plans/plan-a.md" },
     });
+
+    rmSync(path.join(worktree, ".omo/plans/plan-a.md"));
+    const fallback = await discoverCompletedWork({
+      projectRoot: root,
+      allowedWorktreeRoots: [worktree],
+    });
+    expect(fallback.snapshots).toHaveLength(1);
+    expect(fallback.snapshots[0]?.plan).toMatchObject({
+      state: "present",
+      value: { markdown: completePlan() },
+    });
   });
 
   test("enforces aggregate read budget", async () => {

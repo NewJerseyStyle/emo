@@ -208,7 +208,10 @@ async function runClosure(
       ...(options.lockTimeoutMs === undefined ? {} : { lockTimeoutMs: options.lockTimeoutMs }),
       ...(options.lockLeaseMs === undefined ? {} : { lockLeaseMs: options.lockLeaseMs }),
     }, async (idempotencyKey) => {
-      const result = await exporter.export(snapshot, { idempotencyKey });
+      const result = await exporter.export(snapshot, {
+        idempotencyKey,
+        projectRoot: options.projectRoot,
+      });
       if (!isBoundedString(result.path, 32 * 1024) || !SHA256.test(result.sha256)) {
         throw new Error("closure exporter returned an invalid publication result");
       }

@@ -33,9 +33,12 @@ export interface BoundedReadOptions {
   maxBytes: number;
   budget: ReadBudget;
   selector?: string;
+  /** Fault boundary used by containment-race regression tests. */
+  beforeOpen?: () => void | Promise<void>;
 }
 
 const NO_FOLLOW = "O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0;
+const NON_BLOCK = "O_NONBLOCK" in constants ? constants.O_NONBLOCK : 0;
 
 function diagnostic(code: string, pathValue: string, message: string): Diagnostic {
   return { code, path: pathValue, message };
@@ -54,6 +57,18 @@ function errorCode(error: unknown): string | undefined {
 
 function portableRelative(root: string, candidate: string): string {
   return path.relative(root, candidate).split(path.sep).join("/") || ".";
+}
+
+async function descriptorCanonicalPath(handle: fs.FileHandle): Promise<string | null> {
+  for (const root of ["/proc/self/fd", "/dev/fd"]) {
+    try {
+      return await fs.realpath(path.join(root, String(handle.fd)));
+    } catch (error) {
+      const code = errorCode(error);
+      if (code !== "ENOENT" && code !== "EINVAL" && code !== "ENOTDIR") throw error;
+    }
+  }
+  return null;
 }
 
 export function createReadBudget(limit: number): ReadBudget {
@@ -181,10 +196,25 @@ export async function readBoundedText(options: BoundedReadOptions): Promise<Boun
       diagnostic: diagnostic("read.unsafe_path", options.displayPath, "artifact path escapes its allowed root"),
     };
   }
-
+  try {
+    const before = await fs.lstat(candidate);
+    if (!before.isFile() || before.isSymbolicLink()) {
+      return {
+        state: "rejected",
+        diagnostic: diagnostic("read.not_regular", options.displayPath, "artifact is not a regular file"),
+      };
+    }
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") return { state: "missing" };
+    return {
+      state: "rejected",
+      diagnostic: diagnostic("read.io", options.displayPath, "artifact metadata could not be read"),
+    };
+  }
+  await options.beforeOpen?.();
   let handle: fs.FileHandle | undefined;
   try {
-    handle = await fs.open(candidate, constants.O_RDONLY | NO_FOLLOW);
+    handle = await fs.open(candidate, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
     const stat = await handle.stat();
     if (!stat.isFile()) {
       return {
@@ -192,6 +222,33 @@ export async function readBoundedText(options: BoundedReadOptions): Promise<Boun
         diagnostic: diagnostic("read.not_regular", options.displayPath, "artifact is not a regular file"),
       };
     }
+    const openedCanonical = await descriptorCanonicalPath(handle);
+    if (openedCanonical !== null) {
+      if (!isWithin(root.canonical, openedCanonical)) {
+        return {
+          state: "rejected",
+          diagnostic: diagnostic("read.unsafe_path", options.displayPath, "opened artifact escapes its allowed root"),
+        };
+      }
+      canonical = openedCanonical;
+    } else {
+      const current = await fs.lstat(candidate);
+      const currentCanonical = await fs.realpath(candidate);
+      if (
+        current.isSymbolicLink()
+        || !current.isFile()
+        || current.dev !== stat.dev
+        || current.ino !== stat.ino
+        || !isWithin(root.canonical, currentCanonical)
+      ) {
+        return {
+          state: "rejected",
+          diagnostic: diagnostic("read.changed_path", options.displayPath, "artifact path changed during validation"),
+        };
+      }
+      canonical = currentCanonical;
+    }
+
     if (stat.size > options.maxBytes) {
       return {
         state: "rejected",

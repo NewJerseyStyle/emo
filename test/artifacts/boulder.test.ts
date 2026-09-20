@@ -74,6 +74,19 @@ describe("normalizeBoulder", () => {
 
   test("rejects unknown schema versions and prototype keys", () => {
     expect(normalizeBoulder('{"schema_version":3}', source, DEFAULT_ARTIFACT_LIMITS).state).toBe("unsupported");
+    const missingWorks = normalizeBoulder(
+      JSON.stringify({
+        schema_version: 2,
+        active_plan: ".omo/plans/p.md",
+        plan_name: "p",
+        status: "completed",
+        started_at: "2026-09-20T00:00:00.000Z",
+        session_ids: ["s1"],
+      }),
+      source,
+      DEFAULT_ARTIFACT_LIMITS,
+    );
+    expect(missingWorks.state).toBe("unsupported");
     const polluted = normalizeBoulder(
       '{"schema_version":2,"works":{"__proto__":{"work_id":"__proto__"}}}',
       source,

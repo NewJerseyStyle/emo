@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CompletedWorkSnapshot } from "../bridge-types";
 import { assertWritableRootOutsideOmo } from "../bridge-config";
+import { ensureSafeWriteDirectory } from "../safe-write";
 import { canonicalJson, sha256Text } from "../snapshot";
 
 export type EffectKind = "memory" | "closure";
@@ -191,20 +192,46 @@ function createLock(lockPath: string, record: LockRecord): boolean {
   return true;
 }
 
-function acquireRecoveryMutex(recoveryPath: string, ownerToken: string): boolean {
-  try {
-    const fd = fs.openSync(recoveryPath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, 0o600);
+function acquireRecoveryMutex(
+  recoveryPath: string,
+  ownerToken: string,
+  leaseMs: number,
+): boolean {
+  const create = (): boolean => {
     try {
-      fs.writeFileSync(fd, ownerToken, "utf8");
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
+      const fd = fs.openSync(
+        recoveryPath,
+        fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+        0o600,
+      );
+      try {
+        fs.writeFileSync(fd, ownerToken, "utf8");
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw error;
     }
-    return true;
+  };
+
+  if (create()) return true;
+  if (!lockAgeFallback(recoveryPath, leaseMs)) return false;
+
+  const stalePath = `${recoveryPath}.stale.${randomUUID()}`;
+  try {
+    fs.renameSync(recoveryPath, stalePath);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  try {
+    fs.unlinkSync(stalePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  return create();
 }
 
 function releaseRecoveryMutex(recoveryPath: string, ownerToken: string): void {
@@ -232,7 +259,7 @@ function recoverStaleLock(
   leaseMs: number,
 ): boolean {
   const recoveryToken = randomUUID();
-  if (!acquireRecoveryMutex(recoveryPath, recoveryToken)) return false;
+  if (!acquireRecoveryMutex(recoveryPath, recoveryToken, leaseMs)) return false;
   let quarantine: string | undefined;
   try {
     const content = readRegularUtf8(lockPath);
@@ -288,9 +315,14 @@ async function acquireLock(
   return undefined;
 }
 
-function releaseLock(lockPath: string, recoveryPath: string, record: LockRecord): void {
+function releaseLock(
+  lockPath: string,
+  recoveryPath: string,
+  record: LockRecord,
+  leaseMs: number,
+): void {
   const recoveryToken = randomUUID();
-  if (!acquireRecoveryMutex(recoveryPath, recoveryToken)) return;
+  if (!acquireRecoveryMutex(recoveryPath, recoveryToken, leaseMs)) return;
   try {
     const current = parseLock(readRegularUtf8(lockPath));
     if (current?.ownerToken !== record.ownerToken || current.effectKey !== record.effectKey) return;
@@ -348,9 +380,8 @@ export async function executeEffectWithReceipt(
   const leaseMs = options.lockLeaseMs ?? 30_000;
 
   return serialize(serialKey, async () => {
-    if (hasReceipt(locations.receiptPath, expected)) return "already-written";
-    fs.mkdirSync(locations.receiptDirectory, { recursive: true, mode: 0o700 });
-    fs.mkdirSync(locations.lockDirectory, { recursive: true, mode: 0o700 });
+    ensureSafeWriteDirectory(options.projectRoot, root, locations.receiptDirectory);
+    ensureSafeWriteDirectory(options.projectRoot, root, locations.lockDirectory);
     if (hasReceipt(locations.receiptPath, expected)) return "already-written";
     const lock = await acquireLock(
       locations.lockPath,
@@ -365,11 +396,18 @@ export async function executeEffectWithReceipt(
       if (hasReceipt(locations.receiptPath, expected)) return "already-written";
       await effect(effectKey);
       options.afterEffectBeforeReceipt?.();
+      ensureSafeWriteDirectory(options.projectRoot, root, locations.receiptDirectory);
+      ensureSafeWriteDirectory(options.projectRoot, root, locations.lockDirectory);
       writeNoReplace(locations.receiptPath, `${canonicalJson(expected)}\n`);
       return "written";
     } finally {
       stopRenewal();
-      releaseLock(locations.lockPath, locations.recoveryPath, lock);
+      releaseLock(
+        locations.lockPath,
+        locations.recoveryPath,
+        lock,
+        Math.max(30, leaseMs),
+      );
     }
   });
 }

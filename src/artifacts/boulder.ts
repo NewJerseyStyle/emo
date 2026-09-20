@@ -146,6 +146,12 @@ export function normalizeBoulder(
       diagnostics: [diagnostic("boulder.unsupported_version", "Boulder schema version is unsupported")],
     };
   }
+  if (hasVersion && !Object.hasOwn(parsed, "works")) {
+    return {
+      state: "unsupported",
+      diagnostics: [diagnostic("boulder.malformed_works", "Boulder v2 requires a work registry")],
+    };
+  }
 
   const diagnostics: Diagnostic[] = [];
   const works: NormalizedBoulderWork[] = [];
@@ -179,9 +185,6 @@ export function normalizeBoulder(
     return { state: "supported", works, diagnostics };
   }
 
-  if (hasVersion && parsed.schema_version !== 2) {
-    return { state: "unsupported", diagnostics };
-  }
   if (!nonemptyString(parsed.plan_name) || !validIsoString(parsed.started_at)) {
     return { state: "supported", works: [], diagnostics: [diagnostic("boulder.invalid_legacy", "legacy Boulder state is incomplete or malformed")] };
   }

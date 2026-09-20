@@ -116,6 +116,42 @@ describe("effect receipts", () => {
     expect(fs.readFileSync(effectLog, "utf8").trim().split("\n")).toEqual(["promoted"]);
   });
 
+
+  it("recovers an abandoned recovery mutex after its lease expires", async () => {
+    const projectRoot = temporaryRoot();
+    const receiptRoot = path.join(projectRoot, "state");
+    const snapshot = makeSnapshot();
+    const key = deriveEffectKey(snapshot, "memory", "memory/v1");
+    const lockDirectory = path.join(receiptRoot, "locks", "memory", key.slice(0, 2));
+    fs.mkdirSync(lockDirectory, { recursive: true });
+    fs.writeFileSync(path.join(lockDirectory, `${key}.lock`), JSON.stringify({
+      version: 1, effectKey: key, ownerToken: "stale", acquiredAt: 0, leaseExpiresAt: 0,
+    }));
+    const recoveryPath = path.join(lockDirectory, `${key}.recovery`);
+    fs.writeFileSync(recoveryPath, "abandoned-owner");
+    fs.utimesSync(recoveryPath, new Date(0), new Date(0));
+    let calls = 0;
+
+    expect(await executeEffectWithReceipt({
+      projectRoot, receiptRoot, snapshot, effect: "memory", adapterID: "memory/v1",
+      lockTimeoutMs: 100, lockLeaseMs: 30,
+    }, async () => { calls += 1; })).toBe("written");
+    expect(calls).toBe(1);
+  });
+
+  it("rejects receipt descendant symlinks into .omo", async () => {
+    const projectRoot = temporaryRoot();
+    const omo = path.join(projectRoot, ".omo");
+    const receiptRoot = path.join(projectRoot, "state");
+    fs.mkdirSync(omo);
+    fs.mkdirSync(receiptRoot);
+    fs.symlinkSync(omo, path.join(receiptRoot, "receipts"));
+
+    await expect(executeEffectWithReceipt({
+      projectRoot, receiptRoot, snapshot: makeSnapshot(), effect: "memory", adapterID: "memory/v1",
+    }, async () => undefined)).rejects.toThrow();
+    expect(fs.readdirSync(omo)).toEqual([]);
+  });
   it("rejects protected receipt roots without mutating .omo", async () => {
     const projectRoot = temporaryRoot();
     const omo = path.join(projectRoot, ".omo");

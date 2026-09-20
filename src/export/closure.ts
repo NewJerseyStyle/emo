@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ClosureExporter, CompletedWorkSnapshot } from "../bridge-types";
 import { assertWritableRootOutsideOmo } from "../bridge-config";
 import { sha256Text } from "../snapshot";
+import { ensureSafeWriteDirectory } from "../safe-write";
 
 export interface ClosurePublicationHooks {
   beforeLink?(): void;
@@ -158,9 +159,11 @@ function publishNoReplace(
   bytes: Buffer,
   digest: string,
   hooks: ClosurePublicationHooks | undefined,
+  projectRoot: string,
+  writableRoot: string,
 ): void {
   const directory = path.dirname(finalPath);
-  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  ensureSafeWriteDirectory(projectRoot, writableRoot, directory);
   const tempPath = path.join(
     directory,
     `.${path.basename(finalPath)}.${process.pid}.${randomUUID()}.tmp`,
@@ -173,6 +176,7 @@ function publishNoReplace(
     fs.closeSync(fd);
     fd = undefined;
     hooks?.beforeLink?.();
+    ensureSafeWriteDirectory(projectRoot, writableRoot, directory);
     try {
       fs.linkSync(tempPath, finalPath);
     } catch (error) {
@@ -220,12 +224,22 @@ export function createClosureExporter(options: ClosureExporterOptions): ClosureE
     validateRoot(projectRoot: string): void {
       assertWritableRootOutsideOmo(projectRoot, root);
     },
-    async export(snapshot): Promise<{ path: string; sha256: string }> {
+    async export(
+      snapshot,
+      context,
+    ): Promise<{ path: string; sha256: string }> {
       const content = renderClosure(snapshot);
       const bytes = Buffer.from(content, "utf8");
       const digest = sha256Text(content);
       const finalPath = path.join(root, ...digestPath(snapshot));
-      publishNoReplace(finalPath, bytes, digest, options.publicationHooks);
+      publishNoReplace(
+        finalPath,
+        bytes,
+        digest,
+        options.publicationHooks,
+        context.projectRoot,
+        root,
+      );
       return { path: finalPath, sha256: digest };
     },
   };

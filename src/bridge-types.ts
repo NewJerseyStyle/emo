@@ -97,7 +97,7 @@ export interface ClosureExporter {
   id: string;
   export(
     snapshot: CompletedWorkSnapshot,
-    context: { idempotencyKey: string },
+    context: { idempotencyKey: string; projectRoot: string },
   ): Promise<{ path: string; sha256: string }>;
 }
 

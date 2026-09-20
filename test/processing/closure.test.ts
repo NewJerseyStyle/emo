@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createClosureExporter, renderClosure } from "../../src/export/closure";
 import { makeSnapshot } from "./fixture";
+import { sha256Text } from "../../src/snapshot";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -36,8 +37,8 @@ describe("deterministic closure export", () => {
     const root = path.join(projectRoot, ".emo-output");
     const exporter = createClosureExporter({ root, projectRoot });
     const snapshot = makeSnapshot();
-    const first = await exporter.export(snapshot, { idempotencyKey: "first" });
-    const second = await exporter.export(snapshot, { idempotencyKey: "second" });
+    const first = await exporter.export(snapshot, { idempotencyKey: "first", projectRoot });
+    const second = await exporter.export(snapshot, { idempotencyKey: "second", projectRoot });
     expect(second).toEqual(first);
     expect(fs.readFileSync(first.path, "utf8")).toBe(renderClosure(snapshot));
     expect(fs.readdirSync(path.dirname(first.path))).toEqual([path.basename(first.path)]);
@@ -51,7 +52,7 @@ describe("deterministic closure export", () => {
       projectRoot,
       publicationHooks: { beforeLink: () => { throw new Error("injected"); } },
     });
-    await expect(exporter.export(makeSnapshot(), { idempotencyKey: "key" })).rejects.toThrow("injected");
+    await expect(exporter.export(makeSnapshot(), { idempotencyKey: "key", projectRoot })).rejects.toThrow("injected");
     const markdown = fs.existsSync(root)
       ? [...fs.readdirSync(root, { recursive: true })].filter((name) => String(name).endsWith(".md"))
       : [];
@@ -68,10 +69,26 @@ describe("deterministic closure export", () => {
       projectRoot,
       publicationHooks: { afterLink: () => { interrupted = true; throw new Error("injected"); } },
     });
-    await expect(exporter.export(snapshot, { idempotencyKey: "key" })).rejects.toThrow("injected");
+    await expect(exporter.export(snapshot, { idempotencyKey: "key", projectRoot })).rejects.toThrow("injected");
     expect(interrupted).toBeTrue();
-    const retry = await createClosureExporter({ root, projectRoot }).export(snapshot, { idempotencyKey: "key" });
+    const retry = await createClosureExporter({ root, projectRoot }).export(snapshot, { idempotencyKey: "key", projectRoot });
     expect(fs.readFileSync(retry.path, "utf8")).toBe(renderClosure(snapshot));
+  });
+
+  it("rejects a descendant directory symlinked into .omo", async () => {
+    const projectRoot = temporaryRoot();
+    const protectedRoot = path.join(projectRoot, ".omo");
+    const root = path.join(projectRoot, "closures");
+    fs.mkdirSync(protectedRoot);
+    fs.mkdirSync(root);
+    const snapshot = makeSnapshot();
+    fs.symlinkSync(protectedRoot, path.join(root, sha256Text(snapshot.projectID)));
+    const exporter = createClosureExporter({ root, projectRoot });
+
+    await expect(
+      exporter.export(snapshot, { idempotencyKey: "key", projectRoot }),
+    ).rejects.toThrow();
+    expect(fs.readdirSync(protectedRoot)).toEqual([]);
   });
 
   it("rejects protected direct, nested, and symlink-aliased roots before creation", () => {

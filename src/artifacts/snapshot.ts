@@ -138,15 +138,28 @@ function worktreeRoot(
   return authorized === undefined ? null : candidate;
 }
 
-function planCandidate(
+function planCandidates(
   work: NormalizedBoulderWork,
   projectRoot: string,
   explicitRoots: readonly AllowedRoot[],
-): string | null {
+): readonly string[] | null {
   if (hasTraversal(work.activePlan)) return null;
-  if (path.isAbsolute(work.activePlan)) return path.resolve(work.activePlan);
+  const projectCandidate = path.resolve(projectRoot, work.activePlan);
+  if (work.worktreePath === undefined) return [projectCandidate];
+
   const base = worktreeRoot(work, projectRoot, explicitRoots);
-  return base === null ? null : path.resolve(base, work.activePlan);
+  if (base === null) return null;
+  const relativePlan = path.relative(projectRoot, projectCandidate);
+  if (
+    relativePlan === ""
+    || relativePlan.startsWith("..")
+    || path.isAbsolute(relativePlan)
+  ) return [projectCandidate];
+
+  const worktreeCandidate = path.resolve(base, relativePlan);
+  return worktreeCandidate === projectCandidate
+    ? [projectCandidate]
+    : [worktreeCandidate, projectCandidate];
 }
 
 interface DiscoveryContext {
@@ -274,17 +287,23 @@ async function snapshotForWork(
   work: NormalizedBoulderWork,
   ledger: Artifact<string>,
 ): Promise<CompletedWorkSnapshot | null> {
-  const candidate = planCandidate(work, context.projectRoot, context.explicitRoots);
-  if (candidate === null) {
+  const candidates = planCandidates(work, context.projectRoot, context.explicitRoots);
+  if (candidates === null) {
     context.diagnostics.push(diagnostic("plan.unsafe_path", "active_plan", "plan path is unsafe or its worktree is not authorized"));
     return null;
   }
-  const planResult = await cachedRead(context, candidate, "active_plan", context.limits.planBytes);
-  if (planResult.state === "missing") {
+  let planResult: Extract<BoundedReadResult, { state: "present" }> | undefined;
+  for (const candidate of candidates) {
+    const result = await cachedRead(context, candidate, "active_plan", context.limits.planBytes);
+    if (result.state === "missing") continue;
+    if (addRejected(context, result)) return null;
+    planResult = result;
+    break;
+  }
+  if (planResult === undefined) {
     context.diagnostics.push(diagnostic("plan.missing", "active_plan", "completed work plan is missing"));
     return null;
   }
-  if (addRejected(context, planResult)) return null;
 
   const plan = parsePlanChecklist(planResult.text);
   if (plan.total <= 0 || plan.completed !== plan.total) return null;

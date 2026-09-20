@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createReadBudget, readBoundedText, resolveAllowedRoots } from "../../src/artifacts/read";
@@ -114,5 +114,58 @@ describe("readBoundedText", () => {
       budget: createReadBudget(20),
     });
     expect(result).toMatchObject({ state: "rejected", diagnostic: { code: "read.invalid_utf8" } });
+  });
+
+  test("rejects a FIFO without blocking", async () => {
+    if (process.platform === "win32") return;
+    const root = temporaryRoot();
+    const fifo = path.join(root, "artifact.md");
+    const created = Bun.spawnSync(["mkfifo", fifo]);
+    expect(created.exitCode).toBe(0);
+
+    const outcome = await Promise.race([
+      readBoundedText({
+        candidatePath: fifo,
+        displayPath: "artifact",
+        allowedRoots: await resolveAllowedRoots(root, []),
+        maxBytes: 10,
+        budget: createReadBudget(20),
+      }),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 250)),
+    ]);
+    expect(outcome).not.toBe("timeout");
+    expect(outcome).toMatchObject({
+      state: "rejected",
+      diagnostic: { code: "read.not_regular" },
+    });
+  });
+
+  test("binds containment to the opened descriptor after a parent swap", async () => {
+    const root = temporaryRoot();
+    const outside = temporaryRoot();
+    const plans = path.join(root, "plans");
+    const savedPlans = path.join(root, "plans-before-swap");
+    mkdirSync(plans);
+    writeFileSync(path.join(plans, "plan.md"), "SAFE");
+    writeFileSync(path.join(outside, "plan.md"), "SECRET OUTSIDE ROOT");
+    const candidate = path.join(plans, "plan.md");
+    const allowedRoots = await resolveAllowedRoots(root, []);
+
+    const result = await readBoundedText({
+      candidatePath: candidate,
+      displayPath: "active_plan",
+      allowedRoots,
+      maxBytes: 100,
+      budget: createReadBudget(200),
+      beforeOpen: () => {
+        renameSync(plans, savedPlans);
+        symlinkSync(outside, plans);
+      },
+    });
+
+    expect(result).toMatchObject({
+      state: "rejected",
+      diagnostic: { code: "read.unsafe_path" },
+    });
   });
 });
