@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "goal": {
+    "id": "goal-legacy",
+    "sessionID": "legacy-session",
+    "objective": "Verify legacy artifact compatibility",
+    "status": "complete",
+    "tokensUsed": 10,
+    "timeUsedSeconds": 5,
+    "createdAt": 1789804800,
+    "updatedAt": 1789808400,
+    "completedAt": 1789808400
+  }
+}

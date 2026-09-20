@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "goal": {
+    "id": "goal-active",
+    "sessionID": "active-session",
+    "objective": "Work that must not be exported",
+    "status": "active",
+    "tokensUsed": 12,
+    "timeUsedSeconds": 3,
+    "createdAt": 1789894800,
+    "updatedAt": 1789894860
+  }
+}

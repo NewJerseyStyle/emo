@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.test
-    volumes:
-      - emo-hl-test:/root/.hl
-
-volumes:
-  emo-hl-test:
+    environment:
+      CI: "true"
+      BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0"
+    tmpfs:
+      - /tmp

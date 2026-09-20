@@ -1,5 +1,7 @@
 # Architecture evaluation: emo vs. oh-my-opencode
 
+> Historical evaluation and 0.2 implementation record. The findings below motivated the `refactor/omo-integration` boundary. Version 0.2 implements an independent, read-only OMO artifact bridge rather than the parallel BA/PM architecture evaluated here; see the [README](../README.md) and [migration guide](migration-0.2.md).
+
 Date: 2026-09-19
 
 ## Decision
@@ -9,6 +11,22 @@ Do not continue `emo` as a parallel BA/PM/orchestration plugin.
 The useful product is a narrow oh-my-opencode extension for durable, verified knowledge distillation across completed ULW loops and process restarts. Reuse oh-my-opencode's planner, agents, goal loop, boulder state, notepads, todo continuation, and compaction hooks. Keep only capabilities that are absent upstream: durable cross-loop knowledge promotion, optional closure/decision export, and an evidence-based cache experiment if it proves savings.
 
 This conclusion is based on the canonical `code-yeongyu/oh-my-openagent` dev branch at commit [`c43a341`](https://github.com/code-yeongyu/oh-my-openagent/commit/c43a34195babfb8555cd9512ff4a71bbf7724cc1), inspected on 2026-09-19.
+
+The implemented artifact contract was subsequently checked against upstream commit `91ca94f642ef9d8de8b5c9b95bdf25e9ad94b7ad` on 2026-09-20. That later check established the conservative 0.2 rules: schema-v2 `works` is authoritative, completion requires Boulder plus a fully checked non-empty plan, the ledger remains opaque provenance, and unknown future schemas fail open.
+
+## Implemented 0.2 boundary
+
+The 0.2 refactor applies the architectural decision while remaining a separately installed package, not an OMO fork or pull request:
+
+- OMO exclusively owns planning, execution, routing, goals, continuation, compaction, agents, and skills.
+- `emo` makes bounded read-only observations of `.omo` artifacts and never imports, invokes, vendors, or writes to OMO.
+- Idle and compaction events only trigger scans; they cannot establish completion.
+- Closure export and injected memory promotion are independent, opt-in effects.
+- Memory defaults conservatively to no plugin promotion when upstream capability is available or unknown.
+- Direct normalized-snapshot processing works without OMO installed.
+- The BA/PM/ULW/cache controller, auxiliary model sessions, task-context reinjection, heartbeat timers, and automatic `~/.hl` initialization are removed rather than wrapped.
+
+Closure/state writes are lazy and must resolve outside `.omo`. Closure output is immutable and truthfully reports `not measured` when authoritative usage is absent. Effect receipts and locks reduce duplicate work, while the public sink/exporter contract still requires idempotency for crash-safe replay.
 
 ## What upstream already provides
 
@@ -47,7 +65,7 @@ This conclusion is based on the canonical `code-yeongyu/oh-my-openagent` dev bra
 - Failed context injection keeps the stored summary for a later retry.
 - The runtime default now matches the installer and uses the shared `~/.hl` repository rather than `<project>/.hl`.
 
-## Recommended target architecture
+## Historical recommended target architecture
 
 1. Remove or disable emo's BA classifier, PM task generator, feasibility agent, ULW detector, heartbeat state machine, and active-project orchestration when oh-my-opencode is present.
 2. Implement knowledge distillation as an oh-my-opencode skill plus a small lifecycle hook, not as a second orchestrator.
@@ -62,7 +80,7 @@ This conclusion is based on the canonical `code-yeongyu/oh-my-openagent` dev bra
 6. Keep an optional closure exporter that derives an immutable report from upstream artifacts. It must record measured usage or say `not measured`; it must never infer savings from an estimate.
 7. Treat provider-cache heartbeats as an experiment behind a disabled-by-default flag. Ship only after an A/B test demonstrates lower total cost/latency without extra model turns or cross-session interference.
 
-## Docker evaluation
+## Historical Docker evaluation
 
 The pinned Docker gate is `docker compose run --rm --build test` (also `bun run test:docker`). It installs Bun 1.4.1 and Git, then runs:
 
@@ -75,7 +93,9 @@ Baseline before fixes: 110 tests passed once Git was added to the container. The
 
 Final gate after fixes: 118 tests passed, TypeScript typecheck passed, both production entry points built, and postinstall initialized the isolated `/root/.hl` volume successfully.
 
-## Required end-to-end experiment before choosing an implementation
+Those counts and the postinstall check describe the pre-refactor baseline only. The 0.2 gate replaces them with model-free OMO-present/OMO-absent lifecycle fixtures, a read-only `.omo` digest check, typecheck/build, packed import and isolated installation checks, and proof that installation does **not** initialize `~/.hl`.
+
+## Historical end-to-end experiment recommendation
 
 Run the same real OpenCode/oh-my-opencode task in isolated containers under three conditions:
 
@@ -96,6 +116,6 @@ For each condition, force at least two compactions, restart the OpenCode process
 
 Success means the minimal adapter improves restart and cross-session recall over upstream alone without duplicating planning, changing ULW behavior, or increasing total tokens enough to erase the benefit.
 
-## Scope still intentionally unresolved
+## Scope resolved by 0.2
 
-The architectural deletion/refactor is not applied in this evaluation because it changes the product boundary. The security and data-loss fixes are safe regardless of that decision. The next implementation should target the upstream extension described above rather than wiring the currently dead custom compaction state machine.
+The evaluation originally left the deletion/refactor unresolved because it changed the product boundary. The 0.2 branch resolves that question in favor of the narrow independent bridge described above. Provider-cache experimentation remains intentionally separate and disabled; the branch makes no performance or token-savings claim.

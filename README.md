@@ -1,89 +1,172 @@
-# emo: Evolve-My-OpenCode
+# emo 0.2: Evolve-My-OpenCode
 
-`emo` stands for **Evolve-My-OpenCode**: an agent should get better at its job because of the work it has already done. It does two jobs for an OpenCode agent:
+`emo` stands for **Evolve-My-OpenCode**. It is an independent OpenCode plugin and library — `@cache-aware/opencode-cache-compaction` — that preserves evidence from completed [oh-my-opencode (OMO)](https://github.com/code-yeongyu/oh-my-openagent) work.
 
-1. **Keeps work going across compaction.** It preserves useful task context across compaction and keeps ULW/ulw-loop handoffs warm, so a long run survives a fixed context window.
-2. **Lets the agent learn from its own work.** When oh-my-opencode is present, it enables a business-analysis and project-management layer that writes each project's experience to durable, PMI-inspired documents.
+## Why this exists
 
-Compaction answers *how do we keep working inside the context window?* The document layer answers *what did we learn, and how does that survive the session, the project, and the machine?* See [docs/vision.md](docs/vision.md) for the full model.
+`emo` is not only about fitting more work into a smaller context window. It exists so an agent can **evolve**: each completed piece of work leaves durable, PMI-inspired documentation behind, and that documentation — not the chat history — is what the agent learns from, including from its failures. The notepads this package reads are exactly that wins-and-failures surface: `decisions` and `learnings` are what to repeat, while `issues` and `problems` are what not to repeat.
 
-## What the agent learns, and where it is written
+Version 0.2 holds only the part of that mission it can hold safely:
 
-Experience is written down instead of accumulated in context. Every unit of work leaves a document behind in a shared Git-backed repository:
+- **Evidence, not inference.** Completion is proven from OMO's own artifacts: a Boulder work whose status is `completed`, plus a present, fully checked, non-empty plan.
+- **A durable, PMI-style record.** Every verified completion can be exported as an immutable closure document covering the plan, the decisions, the learnings, the issues, and the problems around the work.
+- **Learning that outlives the session.** The normalized snapshot can be promoted through a caller-provided memory sink, which is where distillation, cross-project knowledge, and cross-machine storage belong.
+- **Honesty about measurement.** Usage that cannot be measured is reported as `not measured`; savings are never inferred from a plan estimate.
 
-| Document | PMI/PMBOK equivalent | Written when |
+Compaction, planning, and continuation belong to OMO. `emo`'s job is to make what was learned survive. See [docs/vision.md](docs/vision.md) for the full model.
+
+## What it does
+
+It does not plan, route, execute, continue, or compact work. OMO already owns those jobs. This package observes OMO's durable artifacts read-only, verifies that a work item is complete, and can then:
+
+- export an immutable Markdown closure; and
+- promote the normalized snapshot through a caller-provided, idempotent memory sink when ownership explicitly permits it.
+
+Both effects are off by default. If OMO is not installed or `.omo/boulder.json` is absent, the plugin is a no-op: it makes no OpenCode client calls and creates no state or output directories.
+
+## Install
+
+```sh
+bun add @cache-aware/opencode-cache-compaction
+```
+
+The package does not depend on OMO, run OMO as a subprocess, or write into `.omo`. Installation has no lifecycle initializer and does not create or alter `~/.hl`.
+
+The default package export is the OpenCode plugin. Utility APIs are intentionally isolated under `./library`, so importing the library never initializes the plugin.
+
+```jsonc
+{
+  "plugin": [
+    {
+      "package": "@cache-aware/opencode-cache-compaction",
+      "options": {
+        "closureEnabled": true,
+        "closureRoot": ".emo/closures",
+        "stateRoot": ".emo/state",
+        "memoryOwner": "auto",
+        "upstreamMemory": "unknown"
+      }
+    }
+  ]
+}
+```
+
+The package targets the object-form `@opencode-ai/plugin` `^1.18.27` host contract: its default export has a stable `id` and one `server` initializer. The initializer returns lifecycle hooks; it does not create sessions, submit prompts, read messages, probe configuration, or alter the user's prompt.
+
+## Runtime behavior
+
+`session.idle` and `session.compacted` may trigger a bounded scan for the event's session. The event itself never proves completion. Processing requires all of the following:
+
+1. an associated Boulder work whose status is exactly `completed`;
+2. a present, safely contained plan; and
+3. a recognized, non-empty top-level checklist with every item checked.
+
+The reader supports Boulder schema version 2 and the documented legacy object form without a version. In version 2, `works` is authoritative; a mirrored root record is never processed a second time. Unknown explicit versions, malformed or partial JSON, unsafe paths, symlinks, non-regular files, and oversized sources are skipped without breaking OpenCode.
+
+The implementation follows the OMO artifact protocol inspected at upstream commit `91ca94f642ef9d8de8b5c9b95bdf25e9ad94b7ad` on 2026-09-20. Newer unknown schema versions fail open until this package explicitly supports them.
+
+### Read-only inputs
+
+The bridge may read:
+
+- `.omo/boulder.json`;
+- the selected `.omo/plans/<plan>.md`;
+- `.omo/goal/<encoded-session-id>.json`;
+- `.omo/notepads/<plan>/{decisions,learnings,issues,problems}.md`; and
+- `.omo/ulw-execute/ledger.jsonl` as opaque provenance only.
+
+The ledger is not interpreted as typed completion evidence. Missing notepads and goals remain distinguishable from present-but-empty sources in the normalized snapshot.
+
+Default limits are 256 KiB for Boulder, 512 KiB for a plan, 64 KiB per goal, 128 KiB per notepad, 256 KiB for the ledger, and 4 MiB in aggregate. At most 128 works and 128 sessions per work are considered. Additional absolute worktree roots must be explicitly authorized with `allowedWorktreeRoots`.
+
+### Memory ownership
+
+| `memoryOwner` | `upstreamMemory` | Result |
 | --- | --- | --- |
-| project plan | project charter, scope statement / WBS, business case, risk register | a new goal is accepted |
-| spec | requirements document, traceability matrix | scope is clarified |
-| business-analysis memory | stakeholder register, assumption log, issue log | ambiguous input or feedback arrives |
-| change requests | change request / change log | scope, a bug, or feedback changes the work |
-| decisions | decision log (ADR, with a `supersedes` chain) | a design choice is made |
-| feasibility | feasibility study | before committing to a plan |
-| todos | schedule / task list | work is scheduled |
-| closures | lessons learned register, project closure / final report | a phase or work item completes |
+| `off` | any | No memory promotion |
+| `upstream` | any | Upstream owns memory; no sink call |
+| `plugin` | any | Call the injected sink; skip with a diagnostic if none exists |
+| `auto` | `available` | Upstream owns memory; no sink call |
+| `auto` | `unknown` | Conservatively skip promotion |
+| `auto` | `unavailable` | Call an injected sink, or skip if none exists |
 
-Wins become decisions, their rationale, and reusable patterns. Failures become issue logs, validated failure modes and their fixes, change requests, and lessons learned. Each lesson records **what** happened, **why** it happened, and **what to do differently** — all three are required.
+Capability must be supplied explicitly or by a stable adapter. Package names and the presence of `.omo` are not capability signals. This package does not invoke a model for distillation; an explicitly configured sink owns any such behavior.
 
-Closures and prior decisions are read back when the next plan is generated, so the loop closes: plan → execute → close → remember → plan better.
+Memory promotion and closure export are independent. A closure can remain enabled while upstream owns memory.
 
-## Memory scope
+## Library API
 
-| Scope | How it works |
-| --- | --- |
-| Within a project | Documents live in the repository, so they outlive the context window, the session, and a process restart. |
-| Across projects | One repository holds `projects/<project-id>/` for every project, plus shared `skills/` and an `index.md` catalog. |
-| Across machines | The repository is a Git repository, so it can be mirrored through a remote (`hlRemote`) to carry experience between machines. |
+### Process a snapshot without OMO
 
-The repository root is set with `hlRepoRoot`. The installer initialises `~/.hl`; the runtime default is `<opencode directory>/.hl`.
+Callers that already have a normalized snapshot do not need OMO installed:
 
-> Status: this is the 0.1.x line. The `refactor/omo-integration` branch (0.2) narrows the plugin to a read-only completed-work evidence bridge and delegates planning and memory promotion upstream.
+```ts
+import {
+  createClosureExporter,
+  processCompletedWork,
+  type CompletedWorkSnapshot,
+} from "@cache-aware/opencode-cache-compaction/library";
 
-## Install with an agent
+declare const snapshot: CompletedWorkSnapshot;
 
-If you already use OpenClaw, Codex, OpenCode, or another coding agent, copy the prompt below into that agent. It is intentionally written so the agent performs the setup instead of asking you to edit configuration files manually.
-
-```text
-Install and configure the NewJerseyStyle/emo repository as an OpenCode plugin in this environment.
-
-Repository: https://github.com/NewJerseyStyle/emo
-Plugin package: @cache-aware/opencode-cache-compaction
-Required companion: oh-my-opencode
-
-Act as the coding agent and do the whole setup:
-
-1. Inspect the current environment and locate the active OpenCode configuration. Preserve existing settings, plugins, providers, credentials, and formatting.
-2. Confirm that oh-my-opencode is installed or already configured. If it is missing, install/configure it using the environment's normal OpenCode procedure before continuing.
-3. Clone this repository to a suitable local directory, or update its existing checkout.
-4. Install dependencies with the available package manager, build the plugin, and run its typecheck and tests. If a required tool is missing, install it when permitted; otherwise report the exact blocker.
-5. Register the built plugin in the active OpenCode configuration using a stable absolute local path. Do not remove or reorder unrelated plugins. If OpenCode supports the published package directly, use the published package instead.
-6. Ensure the configuration still includes oh-my-opencode so this plugin can detect and cooperate with it.
-7. Validate the resulting configuration, reload/restart OpenCode if needed, and verify that the plugin loads successfully. Look for the log message: "[cache-compaction] plugin server loaded".
-8. Report exactly what you changed, which config file was changed, the validation commands and results, and any remaining issue. Do not merely give me instructions—perform the changes yourself.
+const result = await processCompletedWork(snapshot, {
+  projectRoot: process.cwd(),
+  memoryOwner: "off",
+  upstreamMemory: "unknown",
+  closureExporter: createClosureExporter({ root: ".emo/closures" }),
+  receiptRoot: ".emo/state",
+});
 ```
 
-## Manual installation
+Public snapshots are validated again at processing time; TypeScript types are not treated as a trust boundary.
 
-For a local checkout, build the plugin and add its absolute `dist` directory or package path to the `plugin` array in the OpenCode configuration. Keep the existing oh-my-opencode entry. After restarting OpenCode, a successful load prints:
+### Inject a memory sink
 
-```text
-[cache-compaction] plugin server loaded
+```ts
+import {
+  processCompletedWork,
+  type MemorySink,
+} from "@cache-aware/opencode-cache-compaction/library";
+
+const sink: MemorySink = {
+  id: "example-memory-v1",
+  async promote(snapshot, { idempotencyKey }) {
+    await durableStore.putIfAbsent(idempotencyKey, snapshot);
+  },
+};
+
+await processCompletedWork(snapshot, {
+  projectRoot: process.cwd(),
+  memoryOwner: "plugin",
+  upstreamMemory: "unavailable",
+  memorySink: sink,
+  receiptRoot: ".emo/state",
+});
 ```
 
-The package postinstall hook initializes the local HL repository at `~/.hl` when possible. It is best-effort and does not modify OpenCode configuration.
+`MemorySink.id` and `ClosureExporter.id` must be stable. Implementations must honor the supplied idempotency key: local receipts and bounded locks reduce duplicate calls, but cannot provide exactly-once delivery across a crash after an external effect succeeds and before its receipt is published.
 
-## Development
+Closure files are deterministic and immutable. An unchanged snapshot is idempotent; changed post-completion evidence creates a new revision. Reports say `not measured` when authoritative scoped usage is absent and never infer `tokens_saved` from a plan estimate.
 
-This project uses Bun:
+## Configuration
 
-```bash
-bun install
-bun run typecheck
-bun test
-bun run build
-```
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Enable lifecycle observation |
+| `closureEnabled` | `false` | Enable immutable closure export |
+| `closureRoot` | `.emo/closures` | Closure output outside `.omo` |
+| `stateRoot` | `.emo/state` | Effect receipts and locks outside `.omo` |
+| `memoryOwner` | `auto` | `auto`, `upstream`, `plugin`, or `off` |
+| `upstreamMemory` | `unknown` | `available`, `unavailable`, or `unknown` |
+| `allowedWorktreeRoots` | `[]` | Additional authorized roots for absolute plan/worktree paths |
+| `limits` | bounded defaults above | Per-source and aggregate read limits |
+| `lockTimeoutMs` | `250` | Bounded cross-process lock wait |
+| `lockLeaseMs` | `30000` | Stale-lock recovery lease |
 
-The plugin degrades gracefully when oh-my-opencode is not installed; the additional orchestration behavior is enabled only when the OpenCode configuration contains an oh-my-opencode-compatible plugin entry.
+Writable state and closure roots are validated to be outside the protected `.omo` tree, including symlink aliases. They are created lazily only when an enabled effect actually succeeds or needs coordination.
 
-## License
+## Migration
 
-MIT
+Version 0.2 is intentionally breaking and has no BA/PM/controller compatibility wrappers. See [docs/migration-0.2.md](docs/migration-0.2.md) for removed exports and options.
+
+Fixture tests prove protocol handling, idempotence, packaging, and no-op behavior. They do not establish model quality, token savings, latency improvements, or compatibility with an unpublished future OMO schema.

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.emo/
 test/runtime/bin/
 .omo/run-continuation/
 *.log

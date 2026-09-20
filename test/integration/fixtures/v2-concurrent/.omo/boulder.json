@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "active_work_id": "active-work",
+  "works": {
+    "active-work": {
+      "work_id": "active-work",
+      "active_plan": ".omo/plans/active.md",
+      "plan_name": "active",
+      "status": "active",
+      "started_at": "2026-09-20T09:00:00.000Z",
+      "session_ids": ["opencode:active-session"],
+      "worktree_path": null
+    },
+    "completed-work": {
+      "work_id": "completed-work",
+      "active_plan": ".omo/plans/completed.md",
+      "plan_name": "completed",
+      "status": "completed",
+      "started_at": "2026-09-20T08:00:00.000Z",
+      "ended_at": "2026-09-20T10:00:00.000Z",
+      "session_ids": ["opencode:completed-session"],
+      "worktree_path": null
+    }
+  },
+  "work_id": "active-work",
+  "active_plan": ".omo/plans/active.md",
+  "plan_name": "active",
+  "status": "active",
+  "started_at": "2026-09-20T09:00:00.000Z",
+  "session_ids": ["opencode:active-session"]
+}

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "goal": {
+    "id": "goal-completed",
+    "sessionID": "completed-session",
+    "objective": "Ship the independent OMO evidence bridge",
+    "status": "complete",
+    "tokensUsed": 321,
+    "timeUsedSeconds": 45,
+    "createdAt": 1789891200,
+    "updatedAt": 1789898400,
+    "completedAt": 1789898400
+  }
+}

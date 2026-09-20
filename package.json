@@ -1,7 +1,7 @@
 {
   "name": "@cache-aware/opencode-cache-compaction",
-  "version": "0.1.1",
-  "description": "Cache-aware context compaction for OpenCode: reduces cold-start cost at ULW/ulw-loop handoff points",
+  "version": "0.2.0",
+  "description": "Independent OMO-aware completed-work evidence bridge for OpenCode",
   "author": "NewJerseyStyle",
   "license": "MIT",
   "homepage": "https://github.com/NewJerseyStyle/emo",
@@ -20,20 +20,22 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./library": {
+      "import": "./dist/library.js",
+      "types": "./dist/library.d.ts"
     }
   },
-  "files": ["dist", "postinstall.mjs"],
+  "files": ["dist", "README.md", "docs/migration-0.2.md"],
   "scripts": {
-    "build": "bun build ./src/index.ts ./src/orchestrator/task-context.ts --outdir dist --target node --format esm && tsc --emitDeclarationOnly --outDir dist",
+    "build": "bun ./scripts/clean-dist.mjs && bun build ./src/index.ts ./src/library.ts --outdir dist --target node --format esm && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "prepublishOnly": "bun run typecheck && bun test && bun run build",
-    "test:docker": "docker compose run --rm --build test",
-    "postinstall": "node postinstall.mjs"
+    "test:docker": "docker compose run --rm --build test"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.18.27",
-    "@opencode-ai/sdk": "^1.18.27"
+    "@opencode-ai/plugin": "^1.18.27"
   },
   "devDependencies": {
     "@types/bun": "latest",
