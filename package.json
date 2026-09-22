@@ -1,9 +1,21 @@
 {
   "name": "@cache-aware/opencode-cache-compaction",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Cache-aware context compaction for OpenCode: reduces cold-start cost at ULW/ulw-loop handoff points",
+  "author": "NewJerseyStyle",
+  "license": "MIT",
+  "homepage": "https://github.com/NewJerseyStyle/emo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NewJerseyStyle/emo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NewJerseyStyle/emo/issues"
+  },
+  "keywords": ["opencode", "oh-my-opencode", "context-compaction", "llm", "plugin"],
   "type": "module",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -12,9 +24,10 @@
   },
   "files": ["dist", "postinstall.mjs"],
   "scripts": {
-    "build": "bun build ./src/index.ts ./src/orchestrator/task-context.ts --outdir dist --target node --format esm",
+    "build": "bun build ./src/index.ts ./src/orchestrator/task-context.ts --outdir dist --target node --format esm && tsc --emitDeclarationOnly --outDir dist",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "prepublishOnly": "bun run typecheck && bun test && bun run build",
     "postinstall": "node postinstall.mjs"
   },
   "dependencies": {
