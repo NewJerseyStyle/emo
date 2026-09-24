@@ -1,6 +1,6 @@
-# emo: cache-aware OpenCode compaction
+# emo: Evolve-My-OpenCode
 
-`emo` does two jobs for an OpenCode agent:
+`emo` stands for **Evolve-My-OpenCode**: an agent should get better at its job because of the work it has already done. It does two jobs for an OpenCode agent:
 
 1. **Keeps work going across compaction.** It preserves useful task context across compaction and keeps ULW/ulw-loop handoffs warm, so a long run survives a fixed context window.
 2. **Lets the agent learn from its own work.** When oh-my-opencode is present, it enables a business-analysis and project-management layer that writes each project's experience to durable, PMI-inspired documents.

@@ -1,6 +1,6 @@
 # Why emo exists
 
-`emo` began as a context-compaction plugin for OpenCode. Compaction answers one question: *how do we keep working inside a fixed context window?* It does not answer the more important one: *what did we learn?*
+`emo` stands for **Evolve-My-OpenCode**. It began as a context-compaction plugin for OpenCode. Compaction answers one question: *how do we keep working inside a fixed context window?* It does not answer the more important one: *what did we learn?*
 
 This document describes the product beyond compaction: an agent that **evolves**, because its experience is written down as durable project documents, so knowledge outlives the context window, the session, the process, and eventually the machine.
 
