@@ -26,6 +26,7 @@
   "scripts": {
     "build": "bun build ./src/index.ts ./src/orchestrator/task-context.ts --outdir dist --target node --format esm && tsc --emitDeclarationOnly --outDir dist",
     "typecheck": "tsc --noEmit",
+    "emo": "bun run src/cli.ts",
     "test": "bun test",
     "prepublishOnly": "bun run typecheck && bun test && bun run build",
     "postinstall": "node postinstall.mjs"

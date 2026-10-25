@@ -27,7 +27,11 @@ export interface Store {
   list(kind: DocKind): Doc[];
   /** Pull (rebase) and push `branch` when an `origin` remote exists. */
   sync(): { pulled: boolean; pushed: boolean };
+  /** Re-check every stored document (schema, id/path match, secrets). */
+  validateAll(): { path: string; errors: string[] }[];
 }
+
+const KINDS: DocKind[] = ["plan", "closure", "decision", "lesson"];
 
 function kindOfId(id: string): DocKind | null {
   const prefix = id.split("-", 1)[0];
@@ -156,5 +160,35 @@ export function openStore(opts: StoreOptions): Store {
     return { pulled, pushed: true };
   };
 
-  return { root, branch, author, addDoc, get, list, sync };
+  const validateAll = (): { path: string; errors: string[] }[] => {
+    const problems: { path: string; errors: string[] }[] = [];
+    for (const kind of KINDS) {
+      const dir = path.join(root, KIND_DIR[kind]);
+      if (!fs.existsSync(dir)) continue;
+      for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".md")).sort()) {
+        const rel = `${KIND_DIR[kind]}/${file}`;
+        const content = fs.readFileSync(path.join(dir, file), "utf8");
+        const parsed = parse(content);
+        const errors: string[] = [];
+        if (parsed === null) {
+          errors.push("missing frontmatter block");
+        } else {
+          errors.push(...validate(kind, parsed.frontmatter, parsed.body));
+          if (parsed.frontmatter.id !== file.slice(0, -3)) errors.push("id does not match file name");
+          for (const link of ["plan", "supersedes"] as const) {
+            const target = parsed.frontmatter[link];
+            if (typeof target === "string" && get(target) === null) {
+              errors.push(`${link} "${target}" does not exist`);
+            }
+          }
+        }
+        const secrets = findSecrets(content);
+        if (secrets.length > 0) errors.push(`credential-like content (${secrets.join(", ")})`);
+        if (errors.length > 0) problems.push({ path: rel, errors });
+      }
+    }
+    return problems;
+  };
+
+  return { root, branch, author, addDoc, get, list, sync, validateAll };
 }
