@@ -13,11 +13,11 @@ export interface Io {
 const USAGE = `emo - project knowledge on the "exp" branch
 
   emo init
-  emo plan add --goal <text> [--status draft|confirmed|done|dropped] [--file <path|->]
+  emo plan add --goal <text> [--status draft|confirmed|done|dropped] [--supersedes <id>] [--file <path|->]
   emo lesson add --title <text> (--what <t> --why <t> --do <t> | --file <path|->)
   emo decision add --title <text> [--status proposed|accepted|superseded] [--supersedes <id>] [--file <path|->]
   emo close --plan <id> --outcome <text> [--tokens-estimated <n>] [--tokens-actual <n>] --file <path|->
-  emo list <plan|closure|decision|lesson>
+  emo list <plan|closure|decision|lesson> [--all]   (hides superseded versions unless --all)
   emo show <id>
   emo validate
   emo sync
@@ -34,6 +34,10 @@ function parseArgs(argv: string[]): { positional: string[]; flags: Flags } {
     const arg = argv[i] as string;
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
+      if (key === "all") {
+        flags[key] = "true";
+        continue;
+      }
       const next = argv[i + 1];
       if (next === undefined || (next.startsWith("--") && next !== "-")) {
         throw new Error(`--${key} needs a value`);
@@ -95,9 +99,11 @@ export function run(argv: string[], io: Io): number {
 
       case "plan": {
         if (sub !== "add") throw new Error("usage: emo plan add");
+        const meta: Frontmatter = { goal: need(flags, "goal"), status: flags.status ?? "draft" };
+        if (flags.supersedes !== undefined) meta.supersedes = flags.supersedes;
         const doc = store.addDoc({
           kind: "plan",
-          meta: { goal: need(flags, "goal"), status: flags.status ?? "draft" },
+          meta,
           body: bodyFrom(flags, io) || `## Tasks\n\n(to be filled in by PM)\n`,
         });
         io.out(doc.id);
@@ -137,7 +143,12 @@ export function run(argv: string[], io: Io): number {
 
       case "list": {
         if (!isKind(sub)) throw new Error(`usage: emo list <${KINDS.join("|")}>`);
-        for (const doc of store.list(sub)) {
+        const docs = store.list(sub);
+        const replaced = new Set(
+          docs.flatMap((d) => (typeof d.frontmatter.supersedes === "string" ? [d.frontmatter.supersedes] : [])),
+        );
+        for (const doc of docs) {
+          if (flags.all === undefined && replaced.has(doc.id)) continue;
           const label = doc.frontmatter.title ?? doc.frontmatter.goal ?? doc.frontmatter.outcome ?? "";
           io.out(`${doc.id}\t${String(label)}`);
         }

@@ -97,3 +97,15 @@ describe("emo cli", { timeout: 60_000 }, () => {
     expect(result.err[0]).toContain("credential-like");
   });
 });
+
+describe("emo cli plan versions", { timeout: 60_000 }, () => {
+  it("hides superseded plans unless --all", () => {
+    const repo = makeRepo();
+    const draft = emo(repo, ["plan", "add", "--goal", "g"]).out[0] as string;
+    const confirmed = emo(repo, ["plan", "add", "--goal", "g", "--status", "confirmed", "--supersedes", draft]).out[0] as string;
+
+    expect(emo(repo, ["list", "plan"]).out.map((l) => l.split("\t")[0])).toEqual([confirmed]);
+    expect(emo(repo, ["list", "plan", "--all"]).out.length).toBe(2);
+    expect(emo(repo, ["plan", "add", "--goal", "g", "--supersedes", "plan-20260101T000000-x-0000"]).code).toBe(2);
+  });
+});

@@ -27,6 +27,6 @@ If you skip the process for something non-trivial, say so in one line.
    - `## Acceptance` checks that can be verified by running something
    - `## Risks` what could go wrong, citing lesson ids when relevant
 4. Give the user a tl;dr (goal, scope, acceptance, top risk) and the plan id. Ask for a yes/no.
-5. On "yes": confirm with a new plan that links back (`emo plan add ... --status confirmed`), then hand off to emo-pm. On change requests, state what changed and why, and record it as a decision (`emo decision add --title ... --supersedes <id>` when it replaces one).
+5. On "yes": confirm with a new version that replaces the draft (`emo plan add --goal ... --status confirmed --supersedes <draft-id> --file -`; documents are never edited), then hand off to emo-pm. On change requests, state what changed and why, and record it as a decision (`emo decision add --title ... --supersedes <id>` when it replaces one).
 
 Never invent prior experience. If nothing relevant exists, say so.
