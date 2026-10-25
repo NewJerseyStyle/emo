@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import { openStore } from "../kb";
 import type { DocKind, Frontmatter } from "../kb";
+import { fileURLToPath } from "node:url";
+import { doctor, formatChecks, skillsDir } from "./doctor";
 
 export interface Io {
   cwd: string;
@@ -23,6 +25,8 @@ const USAGE = `emo - project knowledge on the "exp" branch
   emo show <id>
   emo validate
   emo sync
+  emo doctor                      check that git and omo are usable
+  emo skills                      print the directory holding the emo-* skills
 
 Options: --repo <dir> (default: cwd)  --author <name>
 Creating commands print the new document id on stdout.`;
@@ -110,6 +114,19 @@ export function run(argv: string[], io: Io): number {
     if (cmd === undefined || cmd === "help") {
       io.out(USAGE);
       return cmd === undefined ? 1 : 0;
+    }
+
+    if (cmd === "skills") {
+      const dir = skillsDir(fileURLToPath(import.meta.url));
+      if (dir === null) throw new Error("skills directory not found next to this installation");
+      io.out(dir);
+      return 0;
+    }
+
+    if (cmd === "doctor") {
+      const checks = doctor(process.env.OMO_BIN);
+      for (const line of formatChecks(checks)) io.out(line);
+      return checks.every((c) => c.ok) ? 0 : 1;
     }
 
     const store = openStore({
