@@ -13,10 +13,12 @@ export interface Io {
 const USAGE = `emo - project knowledge on the "exp" branch
 
   emo init
-  emo plan add --goal <text> [--status draft|confirmed|done|dropped] [--supersedes <id>] [--file <path|->]
+  emo plan add --goal <text> [--status draft|confirmed|done|dropped] [--supersedes <id>]
+               [--scope <t>] [--acceptance <t>] [--risks <t>] [--tasks <t>] [--estimate <t>] [--lessons-applied <t>] | [--file <path|->]
   emo lesson add --title <text> (--what <t> --why <t> --do <t> | --file <path|->)
   emo decision add --title <text> [--status proposed|accepted|superseded] [--supersedes <id>] [--file <path|->]
-  emo close --plan <id> --outcome <text> [--tokens-estimated <n>] [--tokens-actual <n>] --file <path|->
+  emo close --plan <id> --outcome <text> [--tokens-estimated <n>] [--tokens-actual <n>]
+            (--actual <what was planned vs what happened> --lessons <ids or none> | --file <path|->)
   emo list <plan|closure|decision|lesson> [--all]   (hides superseded versions unless --all)
   emo show <id>
   emo validate
@@ -63,6 +65,29 @@ function bodyFrom(flags: Flags, io: Io): string {
   return file === "-" ? io.readStdin() : fs.readFileSync(file, "utf8");
 }
 
+/** Flag name -> section heading, so common documents need no multi-line quoting. */
+const PLAN_SECTIONS: ReadonlyArray<readonly [string, string]> = [
+  ["scope", "Scope"],
+  ["acceptance", "Acceptance"],
+  ["risks", "Risks"],
+  ["tasks", "Tasks"],
+  ["estimate", "Estimate"],
+  ["lessons-applied", "Lessons applied"],
+];
+const CLOSURE_SECTIONS: ReadonlyArray<readonly [string, string]> = [
+  ["actual", "Plan vs actual"],
+  ["lessons", "Lessons"],
+];
+
+/** Body from --file, or assembled from section flags (a literal backslash-n in a value becomes a newline). */
+function sectionsFrom(flags: Flags, io: Io, sections: ReadonlyArray<readonly [string, string]>): string {
+  if (flags.file !== undefined) return bodyFrom(flags, io);
+  return sections
+    .filter(([flag]) => flags[flag] !== undefined)
+    .map(([flag, heading]) => `## ${heading}\n${(flags[flag] as string).replace(/\\n/g, "\n")}\n`)
+    .join("\n");
+}
+
 function num(flags: Flags, key: string): number | undefined {
   const raw = flags[key];
   if (raw === undefined) return undefined;
@@ -104,7 +129,7 @@ export function run(argv: string[], io: Io): number {
         const doc = store.addDoc({
           kind: "plan",
           meta,
-          body: bodyFrom(flags, io) || `## Tasks\n\n(to be filled in by PM)\n`,
+          body: sectionsFrom(flags, io, PLAN_SECTIONS) || `## Tasks\n\n(to be filled in by PM)\n`,
         });
         io.out(doc.id);
         return 0;
@@ -136,7 +161,7 @@ export function run(argv: string[], io: Io): number {
         const actual = num(flags, "tokens-actual");
         if (estimated !== undefined) meta.tokens_estimated = estimated;
         if (actual !== undefined) meta.tokens_actual = actual;
-        const doc = store.addDoc({ kind: "closure", meta, body: bodyFrom(flags, io) });
+        const doc = store.addDoc({ kind: "closure", meta, body: sectionsFrom(flags, io, CLOSURE_SECTIONS) });
         io.out(doc.id);
         return 0;
       }

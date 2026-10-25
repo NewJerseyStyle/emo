@@ -109,3 +109,26 @@ describe("emo cli plan versions", { timeout: 60_000 }, () => {
     expect(emo(repo, ["plan", "add", "--goal", "g", "--supersedes", "plan-20260101T000000-x-0000"]).code).toBe(2);
   });
 });
+
+describe("emo cli section flags", { timeout: 60_000 }, () => {
+  it("builds plan and closure bodies from flags, with \n as a newline", () => {
+    const repo = makeRepo();
+    const plan = emo(repo, [
+      "plan", "add", "--goal", "g", "--scope", "in: notes.md\nout: code", "--acceptance", "file exists", "--risks", "none known",
+    ]);
+    expect(plan.code).toBe(0);
+    const text = emo(repo, ["show", plan.out[0] as string]).out[0] as string;
+    expect(text).toContain("## Scope\nin: notes.md\nout: code");
+    expect(text).toContain("## Acceptance\nfile exists");
+
+    const closure = emo(repo, ["close", "--plan", plan.out[0] as string, "--outcome", "done", "--actual", "as planned", "--lessons", "none"]);
+    expect(closure.code).toBe(0);
+    expect(emo(repo, ["validate"]).code).toBe(0);
+  });
+
+  it("still rejects a closure without both sections", () => {
+    const repo = makeRepo();
+    const plan = emo(repo, ["plan", "add", "--goal", "g"]).out[0] as string;
+    expect(emo(repo, ["close", "--plan", plan, "--outcome", "done", "--actual", "x"]).code).toBe(2);
+  });
+});

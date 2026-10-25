@@ -23,15 +23,7 @@ Write a lesson only for something a teammate could act on next time: a wrong ass
 
 ## Closure (once per plan)
 
-`emo close --plan <plan-id> --outcome "<done|partial|dropped>" --tokens-estimated <n> --tokens-actual <n> --file -`
-(omit token flags if not measured; never guess them) with:
-
-```
-## Plan vs actual
-What was planned, what happened, where it deviated, and why.
-
-## Lessons
-Ids of the lessons written for this work, or "none".
-```
+`emo close --plan <plan-id> --outcome "<done|partial|dropped>" --actual "<what was planned, what happened, where it deviated and why>" --lessons "<ids of lessons written for this work, or none>" [--tokens-estimated <n> --tokens-actual <n>]`
+(omit token flags if not measured; never guess them). Both `--actual` and `--lessons` are required.
 
 Then run `emo validate` and `emo sync`. Report the closure id and any lesson ids to the user in one short list.

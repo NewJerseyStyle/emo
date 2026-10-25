@@ -17,7 +17,9 @@ Reply in the user's language.
    - an order that puts the riskiest or least-known task first.
 4. Record a rough estimate in tokens (low / expected / high) and what drives it: files touched, new vs. changed code, unknowns. Say `not measured` for anything you cannot estimate. Do not invent precision.
 5. Write the tasks and estimate into the plan's record:
-   `emo plan add --goal "<same goal>" --status confirmed --supersedes <current-plan-id> --file -` with `## Tasks`, `## Estimate`, `## Lessons applied`.
+   `emo plan add --goal "<same goal>" --status confirmed --supersedes <current-plan-id> --scope ... --acceptance ... --tasks "1. ...
+2. ..." --estimate "<tokens low/expected/high; drivers>" --lessons-applied "<ids or none>"` (repeat the scope and acceptance from the plan you replace; write `
+` for a line break).
 6. Start executing task 1. Keep each task test-first where a test is possible.
 
 ## During execution
