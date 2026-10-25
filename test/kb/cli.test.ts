@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
+
+setDefaultTimeout(60_000);
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -44,7 +46,7 @@ function emo(cwd: string, args: string[], stdin = ""): { code: number; out: stri
   return { code, out, err };
 }
 
-describe("emo cli", { timeout: 60_000 }, () => {
+describe("emo cli", () => {
   it("runs plan → lesson → close → list → validate end to end", () => {
     const repo = makeRepo();
     expect(emo(repo, ["init"]).code).toBe(0);
@@ -98,7 +100,7 @@ describe("emo cli", { timeout: 60_000 }, () => {
   });
 });
 
-describe("emo cli plan versions", { timeout: 60_000 }, () => {
+describe("emo cli plan versions", () => {
   it("hides superseded plans unless --all", () => {
     const repo = makeRepo();
     const draft = emo(repo, ["plan", "add", "--goal", "g"]).out[0] as string;
@@ -110,7 +112,7 @@ describe("emo cli plan versions", { timeout: 60_000 }, () => {
   });
 });
 
-describe("emo cli section flags", { timeout: 60_000 }, () => {
+describe("emo cli section flags", () => {
   it("builds plan and closure bodies from flags, with \n as a newline", () => {
     const repo = makeRepo();
     const plan = emo(repo, [
