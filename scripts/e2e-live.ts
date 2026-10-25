@@ -57,6 +57,7 @@ const omo = openOmo({
   cwd: project,
   bin: process.env.OMO_BIN ?? "omo",
   model,
+  maxRetries: Number(process.env.E2E_RETRIES ?? 30),
   thinking: (process.env.E2E_THINKING as "off" | "low" | undefined) ?? "low",
   skills: ["emo-ba", "emo-pm", "emo-closure"].map((s) => path.join(root, "skills", s)),
   appendSystemPrompt:
