@@ -4,7 +4,3 @@ test/runtime/bin/
 .omo/run-continuation/
 *.log
 .DS_Store
-.env
-.env.*
-!.env.example
-.emo/

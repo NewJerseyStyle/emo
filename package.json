@@ -1,7 +1,7 @@
 {
-  "name": "emo-a",
-  "version": "0.2.0",
-  "description": "Project-level knowledge and an SDLC-shaped loop for coding agents (omo first): plans, lessons and closures shared through a git branch",
+  "name": "@cache-aware/opencode-cache-compaction",
+  "version": "0.1.1",
+  "description": "Cache-aware context compaction for OpenCode: reduces cold-start cost at ULW/ulw-loop handoff points",
   "author": "NewJerseyStyle",
   "license": "MIT",
   "homepage": "https://github.com/NewJerseyStyle/emo",
@@ -12,20 +12,27 @@
   "bugs": {
     "url": "https://github.com/NewJerseyStyle/emo/issues"
   },
-  "keywords": ["coding-agent", "omo", "knowledge-base", "sdlc", "lessons-learned"],
+  "keywords": ["opencode", "oh-my-opencode", "context-compaction", "llm", "plugin"],
   "type": "module",
-  "bin": {
-    "emo": "./dist/cli.js"
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
-  "main": "./dist/kb/index.js",
-  "files": ["dist", "skills"],
+  "files": ["dist", "postinstall.mjs"],
   "scripts": {
-    "build": "bun build ./src/cli.ts ./src/kb/index.ts ./src/driver/omo.ts ./src/driver/workitem.ts --outdir dist --root src --target node --format esm",
+    "build": "bun build ./src/index.ts ./src/orchestrator/task-context.ts --outdir dist --target node --format esm && tsc --emitDeclarationOnly --outDir dist",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "emo": "bun run src/cli.ts",
-    "e2e:live": "bun run scripts/e2e-live.ts",
-    "prepublishOnly": "bun run typecheck && bun test && bun run build"
+    "prepublishOnly": "bun run typecheck && bun test && bun run build",
+    "postinstall": "node postinstall.mjs"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.18.27",
+    "@opencode-ai/sdk": "^1.18.27"
   },
   "devDependencies": {
     "@types/bun": "latest",
