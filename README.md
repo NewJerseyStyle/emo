@@ -67,7 +67,7 @@ Drive omo programmatically (RPC, with rate-limit backoff and closure verificatio
 ## Status
 
 - Knowledge store, CLI, skills, driver: implemented, covered by unit/integration tests (`bun test`).
-- **Live agent compliance is only partly demonstrated.** With `groq/qwen/qwen3.8-27b` the agent followed emo-ba and emo-pm correctly (draft → confirmed → planned, store validated) but the free tier's 7k-token request cap stopped the run before the closure step. With `google/gemini-flash-lite-latest` the agent made no tool calls and only claimed to be done; the driver caught it (no closure after two reminders). A full plan → execute → closure run by the agent itself has **not** been shown yet; it needs a model/tier with enough quota (`google/gemini-flash-latest` free tier allows 20 requests/day).
+- **Live run, end to end:** with `glm-4.7-flash` (Zhipu open platform) driven by omo 5.1.34, the agent read emo-ba, wrote a draft plan, confirmed it with `--supersedes`, created the file, then wrote the closure itself, validated and synced: 13 tool calls, 86 s, no reminders needed, store valid. Weaker or quota-limited setups were less lucky: `groq/qwen3.8-27b` hit the free tier's 7k-token request cap before the closure step, and `gemini-flash-lite-latest` claimed success without calling any tool (the driver caught it). One passing run on one trivial task is evidence the loop works, not a measure of reliability; a larger eval is still to do.
 - Verified against omo 5.1.34 (`--mode rpc`, `--skill`). omo's RPC surface is not documented as stable: pin the omo version and re-run `bun run e2e:live` before upgrading.
 - Not yet done: lesson retrieval ranking, curation/"dream" of the knowledge base, a team pilot.
 

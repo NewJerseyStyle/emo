@@ -20,6 +20,7 @@ if (fs.existsSync(envFile)) {
   }
 }
 
+if (process.env.BIGMODEL_API_KEY === undefined && process.env.ZAI_API_KEY !== undefined) process.env.BIGMODEL_API_KEY = process.env.ZAI_API_KEY;
 const model = process.env.E2E_MODEL ?? "groq/qwen/qwen3.8-27b";
 const task =
   process.argv[2] ??
@@ -39,11 +40,24 @@ if (process.platform === "win32") {
   fs.writeFileSync(path.join(bin, "emo"), `#!/bin/sh\nexec bun run ${cli} "$@"\n`, { mode: 0o755 });
 }
 // Some providers (e.g. Groq's qwen) reject the "developer" role omo uses for reasoning models.
+// "bigmodel/<id>" is a custom provider for Zhipu's open platform (key in ZAI_API_KEY), which omo does not ship.
 fs.writeFileSync(
   path.join(agentDir, "models.json"),
-  JSON.stringify({ providers: { groq: { baseUrl: "https://api.groq.com/openai/v1", compat: { supportsDeveloperRole: false } } } }),
+  JSON.stringify({
+    providers: {
+      groq: { baseUrl: "https://api.groq.com/openai/v1", compat: { supportsDeveloperRole: false } },
+      bigmodel: {
+        baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+        api: "openai-completions",
+        apiKey: process.env.BIGMODEL_API_KEY ?? "",
+        compat: { supportsDeveloperRole: false },
+        models: [{ id: "glm-4.7-flash", name: "GLM-4.7-Flash", reasoning: true, contextWindow: 200000, maxTokens: 16000 }],
+      },
+    },
+  }),
 );
 
+process.on("exit", () => fs.rmSync(agentDir, { recursive: true, force: true })); // models.json may hold a key
 const git = (...args: string[]) => execFileSync("git", args, { cwd: project, stdio: "ignore" });
 git("init", "-q", "-b", "main");
 git("-c", "user.name=ada", "-c", "user.email=ada@example.com", "commit", "-q", "--allow-empty", "-m", "init");
