@@ -1,5 +1,12 @@
 # emo: Evolve-My-OpenCode
 
+> **This repository is archived and no longer maintained.** It is kept as a reference for the original OpenCode-plugin design (v0.1). Its ideas continue in two successors:
+>
+> - **[emo-a](https://github.com/NewJerseyStyle/emo-a)**: runs on top of [omo](https://github.com/code-yeongyu/oh-my-openagent). Project-level plans, lessons and closures shared through a git `exp` branch, with its own CLI, skills and driver.
+> - **[emo-c](https://github.com/NewJerseyStyle/emo-c)**: the OpenCode-based successor that replaces this plugin.
+>
+> New work and issues belong in those repositories.
+
 `emo` stands for **Evolve-My-OpenCode**: an agent should get better at its job because of the work it has already done. It does two jobs for an OpenCode agent:
 
 1. **Keeps work going across compaction.** It preserves useful task context across compaction and keeps ULW/ulw-loop handoffs warm, so a long run survives a fixed context window.
